@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ULTIMATE BENCHMARK PARODY SUITE - AUTO DEMO 1998-2026</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Arial Black', 'Impact', sans-serif;
+    color: #fff;
+    cursor: none;
+  }
+  body.show-cursor { cursor: auto; }
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .scanlines {
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.18) 3px,
+      rgba(0,0,0,0.18) 4px
+    );
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    z-index: 10;
+  }
+  .vignette {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.75) 100%);
+    pointer-events: none;
+    z-index: 11;
+  }
+  .chroma {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 12;
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .chroma.active { opacity: 0.4; }
+  .flicker {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 13;
+    animation: flicker 0.12s infinite;
+    opacity: 0.02;
+    background: #fff;
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 0.02; }
+    50% { opacity: 0.05; }
+  }
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #0f0;
+    text-shadow: 0 0 4px #0f0;
+    z-index: 20;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  .hud.show { opacity: 1; }
+  .hud-top {
+    position: absolute;
+    top: 12px; left: 20px; right: 20px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0,255,0,0.4);
+    padding-bottom: 6px;
+    letter-spacing: 2px;
+  }
+  .hud-bottom {
+    position: absolute;
+    bottom: 12px; left: 20px; right: 20px;
+    border-top: 1px solid rgba(0,255,0,0.4);
+    padding-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 2px;
+  }
+  .bench-name {
+    position: absolute;
+    top: 44px; left: 20px;
+    font-size: 20px;
+    color: #ff0;
+    text-shadow: 0 0 10px #ff0, 0 0 20px #f80;
+    letter-spacing: 3px;
+    font-weight: bold;
+  }
+  .bench-year {
+    position: absolute;
+    top: 72px; left: 20px;
+    font-size: 12px;
+    color: #0ff;
+    text-shadow: 0 0 6px #0ff;
+    letter-spacing: 2px;
+  }
+  .score-panel {
+    position: absolute;
+    top: 44px; right: 20px;
+    text-align: right;
+    font-size: 13px;
+    color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+  }
+  .score-panel .big {
+    font-size: 32px;
+    color: #fff;
+    text-shadow: 0 0 12px #0ff, 0 0 24px #08f;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+  .progress-bar {
+    width: 260px;
+    height: 10px;
+    background: rgba(0,30,0,0.6);
+    border: 1px solid #0a0;
+    overflow: hidden;
+    box-shadow: 0 0 10px #0f0;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0f0, #ff0, #f80);
+    box-shadow: 0 0 12px #ff0;
+    transition: width 0.1s linear;
+  }
+  .temp-gauge {
+    position: absolute;
+    bottom: 44px; right: 20px;
+    font-size: 12px;
+    color: #f80;
+    text-shadow: 0 0 6px #f80;
+    letter-spacing: 1px;
+  }
+  .blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .title-card {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s;
+  }
+  .title-card.show { opacity: 1; }
+  .title-card .year {
+    font-size: 22px;
+    color: #0ff;
+    letter-spacing: 6px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px #0ff;
+  }
+  .title-card h1 {
+    font-size: clamp(36px, 7vw, 80px);
+    background: linear-gradient(180deg, #ff0 0%, #f80 50%, #f00 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+    animation: glow 1s ease-in-out infinite alternate;
+    text-align: center;
+    padding: 0 20px;
+  }
+  @keyframes glow {
+    from { filter: drop-shadow(0 0 20px #f80); }
+    to { filter: drop-shadow(0 0 40px #ff0); }
+  }
+  .title-card .sub {
+    font-size: clamp(14px, 2vw, 22px);
+    color: #0ff;
+    letter-spacing: 4px;
+    text-shadow: 0 0 10px #0ff;
+    text-align: center;
+    padding: 0 20px;
+  }
+  .title-card .tag {
+    position: absolute;
+    bottom: 40px;
+    font-size: 12px;
+    color: #888;
+    letter-spacing: 3px;
+  }
+  .result-screen {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #000 0%, #111 50%, #000 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.8s;
+    padding: 20px;
+  }
+  .result-screen.show { opacity: 1; }
+  .result-screen h2 {
+    font-size: clamp(28px, 5vw, 56px);
+    color: #ff0;
+    text-shadow: 0 0 30px #f80;
+    margin-bottom: 30px;
+    letter-spacing: 6px;
+    text-align: center;
+  }
+  .result-score {
+    font-size: clamp(48px, 10vw, 120px);
+    color: #fff;
+    text-shadow: 0 0 40px #0ff, 0 0 80px #08f;
+    font-weight: bold;
+    margin-bottom: 20px;
+    letter-spacing: 4px;
+  }
+  .result-rank {
+    font-size: clamp(48px, 8vw, 90px);
+    background: linear-gradient(180deg, #ff0, #f80);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 40px;
+    text-shadow: 0 0 40px #f80;
+  }
+  .result-details {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(11px, 1.4vw, 15px);
+    color: #0f0;
+    text-align: left;
+    line-height: 1.8;
+    border: 1px solid #0a0;
+    padding: 20px 30px;
+    background: rgba(0,30,0,0.5);
+    box-shadow: 0 0 20px rgba(0,255,0,0.3);
+    max-width: 90%;
+  }
+  .fs-btn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 50;
+    background: rgba(0,0,0,0.6);
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 8px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    text-shadow: 0 0 4px #0f0;
+    box-shadow: 0 0 10px rgba(0,255,0,0.3);
+    opacity: 0.6;
+    transition: opacity 0.3s;
+  }
+  .fs-btn:hover { opacity: 1; }
+  .transition {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    opacity: 0;
+    background: #000;
+  }
+  .transition.flash {
+    animation: flash 0.5s ease-out;
+  }
+  @keyframes flash {
+    0% { opacity: 0; background: #fff; }
+    20% { opacity: 1; background: #fff; }
+    100% { opacity: 0; background: #000; }
+  }
+  .transition.glitch {
+    animation: glitch 0.6s steps(6);
+  }
+  @keyframes glitch {
+    0%, 100% { opacity: 0; transform: translate(0,0); }
+    10% { opacity: 1; transform: translate(-4px, 2px); background: rgba(255,0,0,0.3); }
+    20% { transform: translate(4px, -2px); background: rgba(0,255,255,0.3); }
+    30% { transform: translate(-2px, 4px); background: rgba(255,0,255,0.3); }
+    40% { opacity: 1; transform: translate(2px, -4px); }
+    50% { opacity: 0.8; transform: translate(-3px, 1px); }
+    60% { opacity: 0.5; }
+    80% { opacity: 0.2; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv"></canvas>
+</div>
+
+<div class="title-card" id="titleCard">
+  <div class="year" id="titleYear">1998</div>
+  <h1 id="titleName">3D-MARK '99</h1>
+  <div class="sub" id="titleSub">GAME PERFORMANCE TEST</div>
+  <div class="tag">▶ NOW RUNNING BENCHMARK...</div>
+</div>
+
+<div class="result-screen" id="resultScreen">
+  <h2>★ BENCHMARK COMPLETE ★</h2>
+  <div class="result-score" id="finalScore">00000</div>
+  <div class="result-rank" id="finalRank">SSS</div>
+  <div class="result-details" id="resultDetails"></div>
+</div>
+
+<div class="hud" id="hud">
+  <div class="hud-top">
+    <div>■ ULTIMATE BENCHMARK PARODY SUITE v2026.08</div>
+    <div>FPS: <span id="fps">--</span> | GPU: <span id="gpu">--</span>% | VRAM: <span id="vram">--</span>MB</div>
+  </div>
+  <div class="bench-name" id="benchName">INITIALIZING...</div>
+  <div class="bench-year" id="benchYear">YEAR ----</div>
+  <div class="score-panel">
+    <div>CURRENT SCORE</div>
+    <div class="big" id="score">0000000</div>
+    <div>RANK: <span id="rank">-</span></div>
+  </div>
+  <div class="hud-bottom">
+    <div>TEST <span id="testNum">01</span>/<span id="testTotal">10</span> <span class="blink">█</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+    <div>AUTO-DEMO MODE</div>
+  </div>
+  <div class="temp-gauge">
+    GPU TEMP: <span id="temp">42</span>°C <span id="tempWarn"></span>
+  </div>
+</div>
+
+<button class="fs-btn" id="fsBtn">[ F ] FULLSCREEN</button>
+
+<div class="transition" id="transition"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+<div class="chroma" id="chroma"></div>
+<div class="flicker"></div>
+
+<script>
+// ============ Canvas Setup (Fullscreen Optimized) ============
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  cv.width = W * DPR;
+  cv.height = H * DPR;
+  cv.style.width = W + 'px';
+  cv.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // Reinitialize current benchmark to adapt to new size
+  if (typeof benchmarks !== 'undefined' && benchmarks[currentBench] && benchmarks[currentBench].init) {
+    benchmarks[currentBench].init();
+  }
+}
+window.addEventListener('resize', resize);
+// NOTE: resize() の初回呼び出しは benchmarks 定義後に移動
+
+const TAU = Math.PI * 2;
+
+// ============ Utility ============
+function noise2(x, y) {
+  const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+function smoothNoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const a = noise2(xi, yi), b = noise2(xi+1, yi);
+  const c = noise2(xi, yi+1), d = noise2(xi+1, yi+1);
+  const u = xf*xf*(3-2*xf), v = yf*yf*(3-2*yf);
+  return a*(1-u)*(1-v) + b*u*(1-v) + c*(1-u)*v + d*u*v;
+}
+function fbm(x, y, oct = 4) {
+  let v = 0, a = 0.5, f = 1;
+  for (let i = 0; i < oct; i++) {
+    v += a * smoothNoise(x*f, y*f);
+    f *= 2; a *= 0.5;
+  }
+  return v;
+}
+function lerp(a, b, t) { return a + (b-a) * t; }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+// ============ Benchmarks ============
+const benchmarks = [
+  // 1. 3D-Mark '99 - Low-poly jungle
+  {
+    name: "3D-MARK '99",
+    year: 1998,
+    sub: "GAME PERFORMANCE TEST",
+    temp: 45,
+    init() { this.t = 0; this.cam = 0; },
+    render() {
+      this.t += 0.016;
+      this.cam += 0.8;
+      const sky = ctx.createLinearGradient(0, 0, 0, H*0.55);
+      sky.addColorStop(0, '#3366cc');
+      sky.addColorStop(1, '#99ccff');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H*0.55);
+      ctx.fillStyle = '#ffdd44';
+      ctx.beginPath();
+      ctx.arc(W*0.78, H*0.22, Math.min(W,H)*0.05, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#5577aa';
+      ctx.beginPath();
+      ctx.moveTo(0, H*0.55);
+      for (let x = 0; x <= W; x += 40) {
+        const y = H*0.55 - Math.abs(Math.sin(x*0.005 + 1))*60 - 30;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H*0.55);
+      ctx.closePath();
+      ctx.fill();
+      const gnd = ctx.createLinearGradient(0, H*0.55, 0, H);
+      gnd.addColorStop(0, '#338833');
+      gnd.addColorStop(1, '#114411');
+      ctx.fillStyle = gnd;
+      ctx.fillRect(0, H*0.55, W, H*0.45);
+      for (let i = 0; i < 18; i++) {
+        const depth = (i % 6) / 6;
+        const tx = ((i * 173 - this.cam * (1 - depth*0.5)) % (W + 200)) - 100;
+        const ty = H*0.55 + depth * H*0.35 + 20;
+        const sz = (1 - depth*0.5) * Math.min(W,H) * 0.08;
+        ctx.fillStyle = '#553311';
+        ctx.fillRect(tx - sz*0.08, ty - sz*0.8, sz*0.16, sz*0.8);
+        ctx.fillStyle = `hsl(${110 + i*3}, 50%, ${25 + depth*15}%)`;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - sz*1.5);
+        ctx.lineTo(tx - sz*0.5, ty - sz*0.3);
+        ctx.lineTo(tx + sz*0.5, ty - sz*0.3);
+        ctx.closePath();
+        ctx.fill();
+      }
+      const cx = W*0.35, cy = H*0.72;
+      const bob = Math.sin(this.t*10) * 4;
+      const legPhase = Math.sin(this.t*10);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy+25, 25, 6, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#2244aa';
+      ctx.fillRect(cx-12, cy-5+bob, 8, 25+legPhase*3);
+      ctx.fillRect(cx+4, cy-5+bob, 8, 25-legPhase*3);
+      ctx.fillStyle = '#cc2222';
+      ctx.fillRect(cx-16, cy-35+bob, 32, 32);
+      ctx.fillStyle = '#ffcc99';
+      ctx.fillRect(cx-11, cy-52+bob, 22, 20);
+      ctx.fillStyle = '#cc2222';
+      ctx.fillRect(cx-22, cy-32+bob, 6, 22-legPhase*3);
+      ctx.fillRect(cx+16, cy-32+bob, 6, 22+legPhase*3);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(20, H-70, 260, 50);
+      ctx.strokeStyle = '#0f0';
+      ctx.strokeRect(20, H-70, 260, 50);
+      ctx.fillStyle = '#0f0';
+      ctx.font = `${Math.max(11, W*0.012)}px Courier New`;
+      ctx.fillText('POLYGONS: 1,247', 30, H-50);
+      ctx.fillText('TEXTURE FILTER: NEAREST', 30, H-30);
+    }
+  },
+  // 2. AquaMark3 - Underwater
+  {
+    name: "AquaMark3",
+    year: 2003,
+    sub: "DIRECTX 9 SHADER TEST",
+    temp: 52,
+    init() {
+      this.t = 0;
+      this.bubbles = [];
+      for(let i=0;i<40;i++) this.bubbles.push({
+        x:Math.random()*W, y:Math.random()*H,
+        r:2+Math.random()*6, s:0.5+Math.random()*1.5
+      });
+    },
+    render() {
+      this.t += 0.016;
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#003355');
+      bg.addColorStop(0.5, '#005588');
+      bg.addColorStop(1, '#001133');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 6; i++) {
+        const rx = (W*0.2) + i * (W*0.12) + Math.sin(this.t*0.5 + i)*30;
+        const grd = ctx.createLinearGradient(rx, 0, rx + 80, H);
+        grd.addColorStop(0, 'rgba(200,255,200,0.25)');
+        grd.addColorStop(1, 'rgba(200,255,200,0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.moveTo(rx, 0);
+        ctx.lineTo(rx + 120, H);
+        ctx.lineTo(rx + 40, H);
+        ctx.lineTo(rx - 40, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#332211';
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 30) {
+        const y = H*0.85 + Math.sin(x*0.01 + this.t*0.3)*20 + fbm(x*0.005, 0)*40;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < 12; i++) {
+        const bx = (i * 97) % W;
+        const by = H*0.88 + Math.sin(bx*0.01)*10;
+        ctx.strokeStyle = `hsl(${100 + i*5}, 60%, 30%)`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        for (let j = 0; j < 8; j++) {
+          const sx = bx + Math.sin(this.t*2 + j*0.5 + i)*15;
+          const sy = by - j*15;
+          ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+      }
+      for (let i = 0; i < 15; i++) {
+        const fx = (W*0.5 + Math.cos(this.t*0.8 + i*0.7)*W*0.3 + i*40) % W;
+        const fy = H*0.3 + Math.sin(this.t*1.2 + i*0.5)*80 + i*15;
+        ctx.fillStyle = `hsl(${200 + i*5}, 70%, 60%)`;
+        ctx.beginPath();
+        ctx.ellipse(fx, fy, 12, 5, 0, 0, TAU);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(fx - 12, fy);
+        ctx.lineTo(fx - 20, fy - 5);
+        ctx.lineTo(fx - 20, fy + 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(200,255,255,0.6)';
+      for (const b of this.bubbles) {
+        b.y -= b.s;
+        b.x += Math.sin(this.t*2 + b.y*0.01)*0.5;
+        if (b.y < -10) { b.y = H + 10; b.x = Math.random()*W; }
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, TAU);
+        ctx.fill();
+      }
+    }
+  },
+  // 3. FurMark - Fur ball GPU burner
+  {
+    name: "FurMark",
+    year: 2008,
+    sub: "GPU STRESS TEST - BURN-IN",
+    temp: 45,
+    init() { this.t = 0; this.temp = 45; },
+    render() {
+      this.t += 0.02;
+      this.temp = Math.min(99, this.temp + 0.15);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W/2, cy = H/2;
+      const R = Math.min(W, H) * 0.28;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, R*2);
+      glow.addColorStop(0, 'rgba(255,150,0,0.3)');
+      glow.addColorStop(1, 'rgba(255,150,0,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+      const strands = Math.min(1500, Math.floor(W*H/800));
+      for (let i = 0; i < strands; i++) {
+        const u = (i / strands) * TAU;
+        const v = Math.sin(i * 0.13 + this.t * 3) * TAU;
+        const rx = R * 0.9;
+        const x = rx * Math.cos(v) * Math.cos(u);
+        const y = rx * Math.cos(v) * Math.sin(u);
+        const z = rx * Math.sin(v);
+        const scale = 1 / (1 + z/(R*3));
+        const sx = cx + x * scale;
+        const sy = cy + y * scale;
+        const furLen = R*0.25 + Math.sin(i + this.t*8)*R*0.05;
+        const ang = Math.atan2(y, x) + Math.sin(i*0.3 + this.t*2)*0.4;
+        const ex = sx + Math.cos(ang) * furLen * scale;
+        const ey = sy + Math.sin(ang) * furLen * scale;
+        const hue = (i + this.t * 80) % 360;
+        ctx.strokeStyle = `hsl(${hue}, 90%, ${40 + scale*30}%)`;
+        ctx.lineWidth = Math.max(1, 2 * scale);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R*0.5);
+      core.addColorStop(0, 'rgba(255,200,100,0.8)');
+      core.addColorStop(1, 'rgba(255,100,0,0)');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R*0.5, 0, TAU);
+      ctx.fill();
+      if (this.temp > 75) {
+        ctx.fillStyle = `rgba(255,0,0,${(this.temp-75)*0.01 + Math.sin(this.t*15)*0.05})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      document.getElementById('temp').textContent = Math.floor(this.temp);
+      document.getElementById('tempWarn').textContent = this.temp > 85 ? '⚠ CRITICAL' : '';
+    }
+  },
+  // 4. CryMark - Jungle stress
+  {
+    name: "CryMark",
+    year: 2007,
+    sub: "CAN YOUR PC RUN IT?",
+    temp: 68,
+    init() {
+      this.t = 0;
+      this.leaves = [];
+      for(let i=0;i<80;i++) this.leaves.push({
+        x:Math.random()*W, y:Math.random()*H,
+        s:1+Math.random()*3, a:Math.random()*TAU
+      });
+    },
+    render() {
+      this.t += 0.016;
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#001a00');
+      bg.addColorStop(0.5, '#003311');
+      bg.addColorStop(1, '#001100');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 10; i++) {
+        const rx = (i * 137 + this.t*20) % W;
+        const grd = ctx.createLinearGradient(rx, 0, rx+40, H);
+        grd.addColorStop(0, `rgba(255,255,180,${0.15 + Math.sin(this.t+i)*0.05})`);
+        grd.addColorStop(1, 'rgba(255,255,180,0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.moveTo(rx, 0);
+        ctx.lineTo(rx + 60, H);
+        ctx.lineTo(rx - 20, H);
+        ctx.closePath();
+        ctx.fill();
+      }
+      for (let layer = 0; layer < 4; layer++) {
+        const depth = layer / 4;
+        for (let i = 0; i < 30; i++) {
+          const x = (i * 71 + layer * 50) % W;
+          const y = H*0.3 + (i % 8) * H*0.08 + layer*20;
+          const sz = (1 - depth*0.5) * Math.min(W,H) * 0.06;
+          ctx.fillStyle = `hsla(${110 + layer*10}, ${60 - layer*10}%, ${15 + depth*20}%, ${0.7 - depth*0.15})`;
+          ctx.beginPath();
+          ctx.arc(x, y, sz, 0, TAU);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = '#88aa22';
+      for (const l of this.leaves) {
+        l.y += l.s;
+        l.x += Math.sin(this.t*2 + l.a)*0.8;
+        if (l.y > H) { l.y = -10; l.x = Math.random()*W; }
+        ctx.beginPath();
+        ctx.ellipse(l.x, l.y, 4, 2, l.a, 0, TAU);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(20, W*0.03)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#0f0';
+      ctx.shadowBlur = 20;
+      ctx.fillText('CAN YOUR PC RUN IT?', W/2, H*0.15);
+      ctx.font = `${Math.max(14, W*0.015)}px Arial`;
+      ctx.fillText('VERY HIGH SETTINGS @ 4K', W/2, H*0.2);
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#f44';
+      ctx.font = `bold ${Math.max(18, W*0.02)}px Courier New`;
+      ctx.fillText(`FPS: ${Math.floor(8 + Math.sin(this.t*5)*3)}`, 20, H-20);
+    }
+  },
+  // 5. HeavenMark - Floating islands
+  {
+    name: "HeavenMark",
+    year: 2009,
+    sub: "DIRECTX 11 FANTASY",
+    temp: 62,
+    init() { this.t = 0; },
+    render() {
+      this.t += 0.016;
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#ff6622');
+      sky.addColorStop(0.4, '#ffaa44');
+      sky.addColorStop(0.7, '#88ccff');
+      sky.addColorStop(1, '#4488aa');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+      const sunX = W*0.7, sunY = H*0.35;
+      const sun = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 150);
+      sun.addColorStop(0, 'rgba(255,255,200,1)');
+      sun.addColorStop(0.3, 'rgba(255,200,100,0.6)');
+      sun.addColorStop(1, 'rgba(255,150,50,0)');
+      ctx.fillStyle = sun;
+      ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 8; i++) {
+        const cx = ((i * 200 + this.t*15) % (W+300)) - 150;
+        const cy = H*0.2 + (i%3)*40;
+        ctx.fillStyle = `rgba(255,200,150,${0.3 + (i%2)*0.1})`;
+        for (let j = 0; j < 5; j++) {
+          ctx.beginPath();
+          ctx.arc(cx + j*25, cy, 20 + (j%2)*10, 0, TAU);
+          ctx.fill();
+        }
+      }
+      for (let i = 0; i < 5; i++) {
+        const ix = (i * 220 + this.t*20) % (W + 300) - 150;
+        const iy = H*0.45 + Math.sin(this.t*0.5 + i)*25 + i*40;
+        const iw = 80 + i*15;
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy+30, iw*0.9, 8, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#553322';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy, iw, 25, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.fillStyle = '#44aa33';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy-5, iw-5, 15, 0, Math.PI, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#226622';
+        for (let j = 0; j < 3; j++) {
+          const tx = ix - iw*0.5 + j * iw*0.5;
+          ctx.beginPath();
+          ctx.arc(tx, iy-25, 12, 0, TAU);
+          ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(200,230,255,0.7)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(ix, iy+20);
+        ctx.lineTo(ix + Math.sin(this.t*3)*3, iy+120);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.beginPath();
+        ctx.arc(ix, iy+120, 15, 0, TAU);
+        ctx.fill();
+      }
+      const dx = W*0.6 + Math.sin(this.t*1.5)*150;
+      const dy = H*0.25 + Math.cos(this.t*1.2)*40;
+      const wingFlap = Math.sin(this.t*10)*15;
+      ctx.fillStyle = '#660000';
+      ctx.beginPath();
+      ctx.ellipse(dx, dy, 35, 15, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#880000';
+      ctx.beginPath();
+      ctx.moveTo(dx-15, dy);
+      ctx.quadraticCurveTo(dx-50, dy-30+wingFlap, dx-70, dy-10+wingFlap);
+      ctx.quadraticCurveTo(dx-40, dy+5, dx-15, dy+5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(dx+15, dy);
+      ctx.quadraticCurveTo(dx+50, dy-30+wingFlap, dx+70, dy-10+wingFlap);
+      ctx.quadraticCurveTo(dx+40, dy+5, dx+15, dy+5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#660000';
+      ctx.beginPath();
+      ctx.arc(dx+30, dy-5, 10, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#660000';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(dx-35, dy);
+      ctx.quadraticCurveTo(dx-60, dy+10+Math.sin(this.t*3)*5, dx-80, dy+5);
+      ctx.stroke();
+    }
+  },
+  // 6. SuperMark - Ancient ruins
+  {
+    name: "SuperMark",
+    year: 2017,
+    sub: "4K / VR READY TEST",
+    temp: 71,
+    init() {
+      this.t = 0;
+      this.particles = [];
+      for(let i=0;i<100;i++) this.particles.push({
+        x:Math.random()*W, y:Math.random()*H,
+        vx:(Math.random()-0.5)*2, vy:-1-Math.random()*2, life:Math.random()
+      });
+    },
+    render() {
+      this.t += 0.016;
+      const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H));
+      bg.addColorStop(0, '#221144');
+      bg.addColorStop(1, '#000011');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 6; i++) {
+        const cx = W*0.15 + i*(W*0.14);
+        const h = H*0.5 + (i%2)*30;
+        const grd = ctx.createLinearGradient(cx-20, 0, cx+20, 0);
+        grd.addColorStop(0, '#332244');
+        grd.addColorStop(0.5, '#665577');
+        grd.addColorStop(1, '#332244');
+        ctx.fillStyle = grd;
+        ctx.fillRect(cx-20, H-h, 40, h);
+        ctx.fillRect(cx-28, H-h, 56, 15);
+        ctx.fillStyle = `hsla(${(i*60+this.t*50)%360}, 100%, 60%, ${0.5+Math.sin(this.t*2+i)*0.3})`;
+        ctx.font = `${Math.max(14, W*0.015)}px serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('✦', cx, H-h+40);
+      }
+      const floor = ctx.createLinearGradient(0, H*0.8, 0, H);
+      floor.addColorStop(0, '#221133');
+      floor.addColorStop(1, '#110022');
+      ctx.fillStyle = floor;
+      ctx.fillRect(0, H*0.85, W, H*0.15);
+      const coreX = W/2, coreY = H*0.5;
+      const coreR = Math.min(W,H)*0.1 + Math.sin(this.t*3)*10;
+      const core = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR*3);
+      core.addColorStop(0, '#fff');
+      core.addColorStop(0.2, '#0ff');
+      core.addColorStop(0.5, '#08f');
+      core.addColorStop(1, 'rgba(0,100,255,0)');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(coreX, coreY, coreR*3, 0, TAU);
+      ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const r = coreR + i*20 + Math.sin(this.t*4+i)*5;
+        ctx.strokeStyle = `hsla(${180+i*20}, 100%, 60%, ${0.6-i*0.1})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(coreX, coreY, r, 0, TAU);
+        ctx.stroke();
+      }
+      for (const p of this.particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.005;
+        if (p.life <= 0 || p.y < 0) {
+          p.x = coreX + (Math.random()-0.5)*coreR;
+          p.y = coreY + (Math.random()-0.5)*coreR;
+          p.vx = (Math.random()-0.5)*3;
+          p.vy = -2-Math.random()*3;
+          p.life = 1;
+        }
+        ctx.fillStyle = `hsla(${(this.t*100+p.x)%360}, 100%, 70%, ${p.life})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, TAU);
+        ctx.fill();
+      }
+      ctx.textAlign = 'left';
+    }
+  },
+  // 7. CineMark - Cathedral CPU render
+  {
+    name: "CineMark R23",
+    year: 2020,
+    sub: "CPU MULTI-CORE RENDER",
+    temp: 78,
+    init() { this.t = 0; this.progress = 0; },
+    render() {
+      this.t += 0.016;
+      this.progress = (this.t * 8) % 100;
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(100,100,100,0.3)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 20; i++) {
+        const y = H*0.7 + i*15;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      const cx = W/2, baseY = H*0.85;
+      const bldg = ctx.createLinearGradient(cx-150, 0, cx+150, 0);
+      bldg.addColorStop(0, '#666');
+      bldg.addColorStop(0.5, '#aaa');
+      bldg.addColorStop(1, '#666');
+      ctx.fillStyle = bldg;
+      ctx.fillRect(cx-150, baseY-220, 300, 220);
+      ctx.fillStyle = '#777';
+      ctx.fillRect(cx-180, baseY-320, 60, 320);
+      ctx.fillRect(cx+120, baseY-320, 60, 320);
+      ctx.fillStyle = '#555';
+      ctx.beginPath();
+      ctx.moveTo(cx-150, baseY-320);
+      ctx.lineTo(cx-180, baseY-380);
+      ctx.lineTo(cx-120, baseY-380);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx+150, baseY-320);
+      ctx.lineTo(cx+120, baseY-380);
+      ctx.lineTo(cx+180, baseY-380);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(cx, baseY-150, 30, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        const a = (i/8)*TAU;
+        ctx.beginPath();
+        ctx.moveTo(cx, baseY-150);
+        ctx.lineTo(cx + Math.cos(a)*30, baseY-150 + Math.sin(a)*30);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ffcc44';
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(cx-120+i*60, baseY-100, 25, 40);
+      }
+      ctx.fillStyle = '#332211';
+      ctx.fillRect(cx-20, baseY-60, 40, 60);
+      const renderY = H * this.progress / 100;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, renderY, W, H-renderY);
+      ctx.strokeStyle = '#0f0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, renderY);
+      ctx.lineTo(W, renderY);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,255,0,0.1)';
+      ctx.fillRect(0, renderY-5, W, 10);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(W*0.15, H-80, W*0.7, 35);
+      ctx.strokeStyle = '#0f0';
+      ctx.strokeRect(W*0.15, H-80, W*0.7, 35);
+      const grd = ctx.createLinearGradient(W*0.15, 0, W*0.85, 0);
+      grd.addColorStop(0, '#0a0');
+      grd.addColorStop(1, '#0f0');
+      ctx.fillStyle = grd;
+      ctx.fillRect(W*0.15+2, H-78, (W*0.7-4)*this.progress/100, 31);
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(14, W*0.015)}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`RENDERING: ${Math.floor(this.progress)}%  |  THREADS: 32  |  ${Math.floor(this.progress*100)} samples`, W/2, H-58);
+      ctx.textAlign = 'left';
+    }
+  },
+  // 8. CrystalDiskMark - Storage test
+  {
+    name: "CrystalDiskMark",
+    year: 2020,
+    sub: "NVMe STORAGE SPEED TEST",
+    temp: 48,
+    init() { this.t = 0; this.readSeq = 0; this.writeSeq = 0; this.r4k = 0; this.w4k = 0; },
+    render() {
+      this.t += 0.016;
+      this.readSeq = Math.min(7200, this.t * 600);
+      this.writeSeq = Math.min(5800, this.t * 500);
+      this.r4k = Math.min(950, this.t * 80);
+      this.w4k = Math.min(820, this.t * 70);
+      ctx.fillStyle = '#0a1530';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#0af';
+      ctx.font = `bold ${Math.max(24, W*0.03)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#0af';
+      ctx.shadowBlur = 15;
+      ctx.fillText('CrystalDiskMark', W/2, H*0.08);
+      ctx.shadowBlur = 0;
+      ctx.font = `${Math.max(12, W*0.013)}px Courier New`;
+      ctx.fillStyle = '#888';
+      ctx.fillText('NVMe SSD Benchmark 2026 Edition', W/2, H*0.12);
+      ctx.textAlign = 'left';
+      const tests = [
+        { name: 'SEQ1M Q8T1 READ', val: this.readSeq, max: 7500, unit: 'MB/s', color: '#0f0' },
+        { name: 'SEQ1M Q8T1 WRITE', val: this.writeSeq, max: 6000, unit: 'MB/s', color: '#08f' },
+        { name: 'RND4K Q32T1 READ', val: this.r4k, max: 1000, unit: 'MB/s', color: '#ff0' },
+        { name: 'RND4K Q32T1 WRITE', val: this.w4k, max: 900, unit: 'MB/s', color: '#f80' }
+      ];
+      const y0 = H*0.18;
+      const rowH = H*0.15;
+      const barW = W*0.55;
+      const barX = W*0.35;
+      ctx.font = `${Math.max(12, W*0.014)}px Courier New`;
+      tests.forEach((t, i) => {
+        const y = y0 + i*rowH;
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(t.name, W*0.05, y);
+        ctx.fillStyle = '#1a2540';
+        ctx.fillRect(barX, y+5, barW, rowH*0.4);
+        const grd = ctx.createLinearGradient(barX, 0, barX+barW, 0);
+        grd.addColorStop(0, t.color);
+        grd.addColorStop(1, t.color + '88');
+        ctx.fillStyle = grd;
+        ctx.fillRect(barX, y+5, barW*(t.val/t.max), rowH*0.4);
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(14, W*0.016)}px Courier New`;
+        ctx.fillText(`${t.val.toFixed(1)} ${t.unit}`, barX + barW + 10, y + rowH*0.3);
+        ctx.font = `${Math.max(12, W*0.014)}px Courier New`;
+      });
+      ctx.fillStyle = '#666';
+      ctx.font = `${Math.max(11, W*0.012)}px Courier New`;
+      ctx.fillText('Drive: Samsung 990 PRO 2TB (NVMe PCIe 4.0)', W*0.05, H*0.88);
+      ctx.fillText('Firmware: 4B2QJXD9  |  Temp: 45°C  |  Health: 100%', W*0.05, H*0.92);
+    }
+  },
+  // 9. RT-Mark - Ray tracing
+  {
+    name: "RT-Mark Port Royal",
+    year: 2019,
+    sub: "REAL-TIME RAY TRACING",
+    temp: 74,
+    init() {
+      this.t = 0;
+      this.spheres = [];
+      for(let i=0;i<9;i++) this.spheres.push({
+        x:(i%3-1)*0.3, y:(Math.floor(i/3)-1)*0.3,
+        z:Math.random()*0.5, hue:i*40
+      });
+    },
+    render() {
+      this.t += 0.016;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W/2, cy = H/2;
+      const floorY = H*0.7;
+      const floorGrd = ctx.createLinearGradient(0, floorY, 0, H);
+      floorGrd.addColorStop(0, '#111');
+      floorGrd.addColorStop(1, '#000');
+      ctx.fillStyle = floorGrd;
+      ctx.fillRect(0, floorY, W, H-floorY);
+      ctx.strokeStyle = 'rgba(0,255,255,0.2)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 20; i++) {
+        const y = floorY + i*15;
+        const perspective = 1 - (y-floorY)/(H-floorY);
+        ctx.globalAlpha = perspective;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      for (let i = -10; i <= 10; i++) {
+        const x1 = cx + i*50;
+        const x2 = cx + i*200;
+        ctx.beginPath();
+        ctx.moveTo(x1, floorY);
+        ctx.lineTo(x2, H);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      for (const s of this.spheres) {
+        const sx = cx + s.x*W*0.6 + Math.sin(this.t + s.hue)*20;
+        const sy = cy + s.y*H*0.4 + Math.cos(this.t*1.3 + s.hue)*15;
+        const r = Math.min(W,H)*0.08;
+        const grd = ctx.createRadialGradient(sx-r*0.3, sy-r*0.3, 0, sx, sy, r);
+        grd.addColorStop(0, '#fff');
+        grd.addColorStop(0.2, `hsl(${(s.hue+this.t*30)%360}, 80%, 60%)`);
+        grd.addColorStop(0.6, `hsl(${(s.hue+180+this.t*30)%360}, 80%, 30%)`);
+        grd.addColorStop(1, '#000');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.arc(sx-r*0.35, sy-r*0.35, r*0.15, 0, TAU);
+        ctx.fill();
+        const ry = floorY + (floorY - sy)*0.3;
+        const rGrd = ctx.createRadialGradient(sx, ry, 0, sx, ry, r*0.7);
+        rGrd.addColorStop(0, `hsla(${(s.hue+this.t*30)%360}, 80%, 50%, 0.3)`);
+        rGrd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rGrd;
+        ctx.beginPath();
+        ctx.ellipse(sx, ry, r*0.7, r*0.3, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(255,50,50,0.4)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 30; i++) {
+        const a = (i/30)*TAU + this.t*0.5;
+        const x1 = cx + Math.cos(a)*30;
+        const y1 = cy + Math.sin(a)*30;
+        const x2 = cx + Math.cos(a)*Math.max(W,H);
+        const y2 = cy + Math.sin(a)*Math.max(W,H);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#0ff';
+      ctx.font = `bold ${Math.max(18, W*0.022)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#0ff';
+      ctx.shadowBlur = 15;
+      ctx.fillText('RAY TRACING: ON', cx, H*0.08);
+      ctx.font = `${Math.max(12, W*0.014)}px Courier New`;
+      ctx.fillText(`RT CORES: ${Math.floor(85 + Math.sin(this.t)*5)}%  |  RAYS/SEC: ${(2.4 + Math.sin(this.t*2)*0.3).toFixed(2)}M`, cx, H*0.12);
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+    }
+  },
+  // 10. SpeedWay - Space station
+  {
+    name: "SpeedWay",
+    year: 2022,
+    sub: "DIRECTX 12 ULTIMATE",
+    temp: 69,
+    init() {
+      this.t = 0;
+      this.stars = [];
+      for(let i=0;i<300;i++) this.stars.push({
+        x:Math.random()*W, y:Math.random()*H,
+        s:Math.random()*2, b:Math.random()
+      });
+    },
+    render() {
+      this.t += 0.016;
+      const bg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H));
+      bg.addColorStop(0, '#110022');
+      bg.addColorStop(0.5, '#000011');
+      bg.addColorStop(1, '#000');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      for (const s of this.stars) {
+        const b = (Math.sin(this.t*2 + s.b*10)*0.5 + 0.5) * s.s;
+        ctx.fillStyle = `rgba(255,255,255,${0.3 + b*0.5})`;
+        ctx.fillRect(s.x, s.y, s.s, s.s);
+      }
+      for (let i = 0; i < 5; i++) {
+        const nx = W*0.3 + i*W*0.1;
+        const ny = H*0.3 + Math.sin(i)*H*0.1;
+        const neb = ctx.createRadialGradient(nx, ny, 0, nx, ny, 200);
+        neb.addColorStop(0, `hsla(${i*60+this.t*10}, 80%, 50%, 0.15)`);
+        neb.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = neb;
+        ctx.fillRect(0, 0, W, H);
+      }
+      const cx = W/2, cy = H/2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(this.t*0.3);
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(0, 0, 30, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.strokeStyle = '#aaa';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 120, 30, 0, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 6; i++) {
+        const a = (i/6)*TAU;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*30, Math.sin(a)*30);
+        ctx.lineTo(Math.cos(a)*120, Math.sin(a)*30);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#224488';
+      ctx.fillRect(-200, -8, 60, 16);
+      ctx.fillRect(140, -8, 60, 16);
+      ctx.strokeStyle = '#4488ff';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-200 + i*10, -8);
+        ctx.lineTo(-200 + i*10, 8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(140 + i*10, -8);
+        ctx.lineTo(140 + i*10, 8);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 8; i++) {
+        const a = (i/8)*TAU + this.t;
+        const lx = Math.cos(a)*120;
+        const ly = Math.sin(a)*30;
+        ctx.fillStyle = `hsl(${(i*45+this.t*100)%360}, 100%, 60%)`;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 3, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+      const px = W*0.85, py = H*0.75, pr = 100;
+      const planet = ctx.createRadialGradient(px-pr*0.3, py-pr*0.3, 0, px, py, pr);
+      planet.addColorStop(0, '#886644');
+      planet.addColorStop(0.7, '#442211');
+      planet.addColorStop(1, '#000');
+      ctx.fillStyle = planet;
+      ctx.beginPath();
+      ctx.arc(px, py, pr, 0, TAU);
+      ctx.fill();
+      const atm = ctx.createRadialGradient(px, py, pr*0.9, px, py, pr*1.2);
+      atm.addColorStop(0, 'rgba(100,150,255,0)');
+      atm.addColorStop(0.5, 'rgba(100,150,255,0.3)');
+      atm.addColorStop(1, 'rgba(100,150,255,0)');
+      ctx.fillStyle = atm;
+      ctx.beginPath();
+      ctx.arc(px, py, pr*1.2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#0ff';
+      ctx.font = `bold ${Math.max(16, W*0.02)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#0ff';
+      ctx.shadowBlur = 15;
+      ctx.fillText('DX12 ULTIMATE  |  MESH SHADERS  |  VRS', cx, H*0.08);
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+    }
+  }
+];
+
+// ============ Demo Controller ============
+let currentBench = 0;
+let benchStart = 0;
+let transitionStart = 0;
+const BENCH_DURATION = 9000;
+const TITLE_DURATION = 2800;
+const TRANSITION_DURATION = 300;
+// phase: 'title' | 'render' | 'transition' | 'result'
+let phase = 'title';
+
+document.getElementById('testTotal').textContent = String(benchmarks.length).padStart(2, '0');
+
+let lastFrame = performance.now();
+let fpsAcc = 0, fpsCount = 0, fpsDisplay = 0;
+
+const titleCard = document.getElementById('titleCard');
+const resultScreen = document.getElementById('resultScreen');
+const hud = document.getElementById('hud');
+const transition = document.getElementById('transition');
+const chroma = document.getElementById('chroma');
+
+function showTitle() {
+  const b = benchmarks[currentBench];
+  document.getElementById('titleYear').textContent = b.year;
+  document.getElementById('titleName').textContent = b.name;
+  document.getElementById('titleSub').textContent = b.sub;
+  titleCard.classList.add('show');
+  document.getElementById('benchName').textContent = b.name;
+  document.getElementById('benchYear').textContent = 'YEAR ' + b.year + '  |  ' + b.sub;
+  document.getElementById('testNum').textContent = String(currentBench + 1).padStart(2, '0');
+  hud.classList.add('show');
+}
+
+function hideTitle() {
+  titleCard.classList.remove('show');
+}
+
+function playTransition(type = 'flash') {
+  transition.className = 'transition';
+  void transition.offsetWidth;
+  transition.classList.add(type);
+  if (type === 'glitch') {
+    chroma.classList.add('active');
+    setTimeout(() => chroma.classList.remove('active'), 600);
+  }
+}
+
+function showResult() {
+  const totalScore = 48532 + Math.floor(Math.random() * 5000);
+  document.getElementById('finalScore').textContent = totalScore.toLocaleString();
+  document.getElementById('finalRank').textContent = 'SSS';
+  document.getElementById('resultDetails').innerHTML = `
+    ═══════ SYSTEM CONFIGURATION ═══════<br>
+    CPU:    Intel Core i9-14900K @ 6.0GHz<br>
+    GPU:    NVIDIA GeForce RTX 5090 24GB<br>
+    RAM:    64GB DDR5-6400 (Quad Channel)<br>
+    STORAGE: Samsung 990 PRO 2TB NVMe<br>
+    OS:     Windows 11 Pro 24H2<br>
+    DRIVER: 560.94<br>
+    ═══════════════════════════════════<br>
+    RESOLUTION:  3840 x 2160 (4K UHD)<br>
+    SETTINGS:    ULTRA / RT ON / DLSS 3.5<br>
+    TOTAL TIME:  ${benchmarks.length * (BENCH_DURATION/1000)} seconds<br>
+    ═══════════════════════════════════<br>
+    ★ CONGRATULATIONS! YOUR PC IS LEGENDARY ★
+  `;
+  resultScreen.classList.add('show');
+  hud.classList.remove('show');
+}
+
+function hideResult() {
+  resultScreen.classList.remove('show');
+}
+
+// FIXED: switchBench now only sets phase to 'transition'
+// The actual bench switching happens in the loop when transition completes
+function switchBench() {
+  phase = 'transition';
+  transitionStart = performance.now();
+  const transType = Math.random() < 0.5 ? 'flash' : 'glitch';
+  playTransition(transType);
+}
+
+function loop(now) {
+  const dt = now - lastFrame;
+  lastFrame = now;
+  fpsAcc += dt; fpsCount++;
+  if (fpsAcc >= 500) {
+    fpsDisplay = Math.round(1000 / (fpsAcc / fpsCount));
+    fpsAcc = 0; fpsCount = 0;
+  }
+
+  const elapsed = now - benchStart;
+
+  // Clear
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  if (phase === 'transition') {
+    // Animated grid bg during transition
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    const t = now * 0.002;
+    for (let i = 0; i < 30; i++) {
+      const y = (i * 40 + t*40) % H;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    // Check if transition duration has passed
+    if (now - transitionStart >= TRANSITION_DURATION) {
+      currentBench = (currentBench + 1) % benchmarks.length;
+      benchStart = performance.now();
+      phase = 'title';
+      benchmarks[currentBench].init && benchmarks[currentBench].init();
+      showTitle();
+    }
+  } else if (phase === 'title') {
+    // Animated grid bg during title
+    ctx.strokeStyle = 'rgba(0,255,255,0.1)';
+    ctx.lineWidth = 1;
+    const t = now * 0.001;
+    for (let i = 0; i < 30; i++) {
+      const y = (i * 40 + t*20) % H;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 40; i++) {
+      const x = (i * 40 + t*15) % W;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    if (elapsed >= TITLE_DURATION) {
+      phase = 'render';
+      benchStart = now;
+      hideTitle();
+    }
+  } else if (phase === 'render') {
+    benchmarks[currentBench].render(now);
+    if (elapsed >= BENCH_DURATION) {
+      if (currentBench === benchmarks.length - 1) {
+        phase = 'result';
+        playTransition('flash');
+        setTimeout(() => showResult(), 400);
+        setTimeout(() => {
+          hideResult();
+          // FIXED: Set to last index so switchBench's +1 wraps to 0
+          currentBench = benchmarks.length - 1;
+          switchBench();
+        }, 7000);
+      } else {
+        switchBench();
+      }
+    }
+  }
+  // phase === 'result': just keep canvas black, result screen is HTML overlay
+
+  // HUD updates (only during render phase)
+  if (phase === 'render') {
+    document.getElementById('fps').textContent = fpsDisplay;
+    document.getElementById('gpu').textContent = Math.min(99, 70 + Math.floor(Math.random() * 25));
+    document.getElementById('vram').textContent = (12 + Math.floor(Math.random() * 8)) * 1024;
+    const prog = Math.min(100, (elapsed / BENCH_DURATION) * 100);
+    document.getElementById('prog').style.width = prog + '%';
+    const score = Math.floor((currentBench * 123456) + (elapsed * 20));
+    document.getElementById('score').textContent = String(score).padStart(7, '0');
+    const ranks = ['F','E','D','C','B','A','S','SS','SSS'];
+    document.getElementById('rank').textContent = ranks[Math.min(ranks.length - 1, Math.floor(score / 250000))];
+    const b = benchmarks[currentBench];
+    if (b.temp) {
+      const temp = b.temp + Math.sin(now*0.001)*3;
+      document.getElementById('temp').textContent = Math.floor(temp);
+      document.getElementById('tempWarn').textContent = temp > 85 ? '⚠ CRITICAL' : temp > 75 ? '⚠ HOT' : '';
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ============ Fullscreen ============
+const fsBtn = document.getElementById('fsBtn');
+fsBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen();
+  }
+});
+document.addEventListener('fullscreenchange', resize);
+document.addEventListener('mousemove', () => {
+  document.body.classList.add('show-cursor');
+  clearTimeout(window._cursorTimer);
+  window._cursorTimer = setTimeout(() => document.body.classList.remove('show-cursor'), 2000);
+});
+
+// ============ Start ============
+// FIXED: resize() is now called AFTER benchmarks array is defined
+resize();
+benchStart = performance.now();
+benchmarks[0].init();
+showTitle();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
