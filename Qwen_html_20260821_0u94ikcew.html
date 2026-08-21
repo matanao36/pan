@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>如月ターミナル ― 客車編成替え版</title>
+<style>
+  body{margin:0;padding:16px;display:flex;flex-direction:column;align-items:center;
+    font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+    background:#2b2620;color:#ddd;}
+  h1{font-size:20px;margin:4px 0 2px;color:#f0e8d8;}
+  .sub{font-size:12px;color:#a99;margin-bottom:10px;}
+  canvas{width:min(1280px,100%);height:auto;display:block;border-radius:8px;
+    box-shadow:0 10px 40px rgba(0,0,0,.65);}
+  #panel{width:min(1280px,100%);display:flex;flex-wrap:wrap;gap:12px;align-items:center;
+    margin:12px 0 8px;padding:10px 14px;background:#f4ead6;border-radius:10px;
+    font-size:13px;color:#433;}
+  button{padding:6px 12px;border:1px solid #b9a888;border-radius:8px;background:#fff8ea;
+    cursor:pointer;font-size:12px;color:#433;}
+  button:hover{background:#eee0c4;}
+  #stats{width:min(1280px,100%);display:flex;flex-wrap:wrap;gap:8px;}
+  .card{flex:1;min-width:130px;background:#f4ead6;border-radius:10px;padding:6px 10px;
+    font-size:11px;color:#433;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+  #logCard{flex:2;min-width:260px;}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;}
+  .note{font-size:11px;color:#a99;margin-top:10px;max-width:1280px;line-height:1.7;}
+  #kai{width:min(1280px,100%);margin-top:12px;background:#f7f2e6;color:#3a3226;
+    border-radius:12px;padding:16px 22px;font-size:13px;line-height:1.8;display:none;}
+  #kai h2{font-size:16px;border-bottom:2px solid #b09a6a;padding-bottom:6px;margin:4px 0 10px;}
+  #kai h3{font-size:13px;color:#7a5a2a;margin:12px 0 4px;}
+</style>
+</head>
+<body>
+<h1>🚂 如月ターミナル ― 客車編成替え版</h1>
+<div class="sub">客車留置線2線 + 編成替え(振替・切り離し・組成発車) / 完全版の全機能つき</div>
+<canvas id="cv" width="1280" height="720"></canvas>
+<div id="panel">
+  <label>全体速度 <input type="range" id="speed" min="0" max="3" step="0.1" value="1"></label>
+  <button id="pause">⏸ 一時停止</button>
+  <button id="soundBtn">🔇 サウンドOFF</button>
+  <button id="kaiBtn">📖 解説を表示</button>
+  <label><input type="checkbox" id="night"> 🌙 夜間</label>
+  <label><input type="checkbox" id="sepia"> 📷 旧写真</label>
+</div>
+<div id="stats"></div>
+<div class="note">
+  客車の編成替え: ①到着普通は半数の確率で<b>末尾2両を切り離し</b>(ホームに留置)。
+  ②<b>留置線1・2</b>間でDD13が客車を振替。③留置の客車を<b>発車線へ押し上げ組成</b>。
+  ④次の普通は<b>組成された編成で発車</b>(両数はその時々で変化)。ラダー線経由で移動します。
+</div>
+<div id="kai">
+  <h2>📖 解説 ― 客車の編成替え(客車入換)</h2>
+  <h3>1) 切り離し(留置)</h3>
+  到着した普通列車は、運用次第で末尾の客車をホームに切り離します。余剰客車は後で留置線へ整理されます。
+  <h3>2) 留置線間の振替</h3>
+  入換機(DD13)が留置線から客車を引き出し、ラダー線(左端の連絡線)経由で別の留置線へ押し込みます。
+  <h3>3) 組成と発車</h3>
+  発車線が空くと、留置の客車を押し上げて編成を組成。客車機関車が連結し、新しい普通列車として発車します。
+  <h3>4) その他の設備</h3>
+  ハンプヤード(突き放し/引き上げ)・機回し・キハ特急・転車台・夜間・サウンド(🔊で起動)は従来通り。
+</div>
+<script>
+"use strict";
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),W=1280,H=720;
+const SP=29,CAP=8,COACH=30;
+const DESTS=[{name:'門司',col:'#b3543f'},{name:'吹田',col:'#3f6f8f'},{name:'鶴見',col:'#5f8f4f'},
+ {name:'稲町',col:'#b08a3a'},{name:'塩尻',col:'#7a5f8f'},{name:'青森',col:'#4f7f7f'},{name:'高松',col:'#8f5f6f'}];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+let clock=7*60,log=[];
+function fmt(){const h=Math.floor(clock/60)%24,m=Math.floor(clock%60);
+  return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');}
+function pushLog(msg){log.unshift('['+fmt()+'] '+msg);if(log.length>7)log.pop();}
+
+/* ---------- サウンド ---------- */
+let AC=null,MG=null,soundOn=false,NB=null;
+function initAudio(){if(AC)return;
+  AC=new (window.AudioContext||window.webkitAudioContext)();
+  MG=AC.createGain();MG.gain.value=.6;MG.connect(AC.destination);
+  NB=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);
+  const d=NB.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  const src=AC.createBufferSource();src.buffer=NB;src.loop=true;
+  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=280;
+  const g=AC.createGain();g.gain.value=.015;
+  src.connect(f);f.connect(g);g.connect(MG);src.start();}
+function noise(dur,freq,vol,type){if(!soundOn||!AC)return;
+  const s=AC.createBufferSource();s.buffer=NB;
+  const f=AC.createBiquadFilter();f.type=type||'lowpass';f.frequency.value=freq;f.Q.value=1;
+  const g=AC.createGain(),t=AC.currentTime;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  s.connect(f);f.connect(g);g.connect(MG);s.start(t);s.stop(t+dur+.02);}
+function tone(freq,dur,vol,type){if(!soundOn||!AC)return;
+  const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+  o.type=type||'sine';o.frequency.value=freq;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.03);
+  g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g);g.connect(MG);o.start(t);o.stop(t+dur+.02);}
+function steamWhistle(){if(!soundOn||!AC)return;const t=AC.currentTime;
+  [[618,.1],[624,.1],[926,.04]].forEach(pr=>{const o=AC.createOscillator(),g=AC.createGain();
+    o.type='sine';o.frequency.value=pr[0];
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(pr[1],t+.07);
+    g.gain.setValueAtTime(pr[1],t+.65);g.gain.linearRampToValueAtTime(0,t+.95);
+    o.connect(g);g.connect(MG);o.start(t);o.stop(t+1);});
+  noise(.9,2500,.04,'highpass');}
+function dieselHorn(){if(!soundOn||!AC)return;const t=AC.currentTime;
+  [233,311].forEach(f=>{const o=AC.createOscillator(),g=AC.createGain(),
+    fl=AC.createBiquadFilter();fl.type='lowpass';fl.frequency.value=900;
+    o.type='sawtooth';o.frequency.value=f;
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.08,t+.05);
+    g.gain.setValueAtTime(.08,t+.45);g.gain.linearRampToValueAtTime(0,t+.65);
+    o.connect(fl);fl.connect(g);g.connect(MG);o.start(t);o.stop(t+.7);});}
+function clank(v){noise(.1,1500,v||.15);tone(480,.09,(v||.15)*.5,'square');}
+function humpSound(){clank(.07);noise(.4,700,.06);tone(120,.14,.09);}
+function brakeSqueal(){noise(.45,1500,.05,'bandpass');}
+function chuff(v,dz){if(dz)noise(.09,180,.06);else noise(.08,600,.05+Math.min(.04,v/4000));}
+
+/* ---------- 仕分線ルート ---------- */
+function bezPts(p0,c1,c2,p3){const p=[];for(let i=0;i<=24;i++){const t=i/24,u=1-t;
+  p.push([u*u*u*p0[0]+3*u*u*t*c1[0]+3*u*t*t*c2[0]+t*t*t*p3[0],
+          u*u*u*p0[1]+3*u*u*t*c1[1]+3*u*t*t*c2[1]+t*t*t*p3[1]]);}return p;}
+function buildRoute(yk){const pts=bezPts([200,300],[246,300],[216,yk],[260,yk]);
+  for(let x=266;x<=1200;x+=6)pts.push([x,yk]);
+  const cum=[0];for(let i=1;i<pts.length;i++)
+    cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  return{pts,cum,len:cum[cum.length-1],sStraight:cum[24]};}
+function posAt(r,s){const P=r.pts,C=r.cum,n=P.length-1;
+  if(s<=0)return{x:P[0][0]+s,y:P[0][1],a:0};
+  if(s>=r.len)return{x:P[n][0],y:P[n][1],a:0};
+  let i=1;while(C[i]<s)i++;
+  const t=(s-C[i-1])/((C[i]-C[i-1])||1);
+  return{x:P[i-1][0]+(P[i][0]-P[i-1][0])*t,y:P[i-1][1]+(P[i][1]-P[i-1][1])*t,
+         a:Math.atan2(P[i][1]-P[i-1][1],P[i][0]-P[i-1][0])};}
+const tracks=DESTS.map((d,k)=>({y:380+k*40,cars:[],reserved:0,phase:'open',loco:null,locoKind:'tender',timer:0,busy:false,route:buildRoute(380+k*40)}));
+const LAMPS=[[300,262],[640,262],[980,262],[460,666],[860,666]];
+/* 客車留置線 */
+const yard={Y1:{y:248,coaches:['pax','pax','bag']},Y2:{y:276,coaches:['pax','sleep']}};
+let p2cars=[];
+let reform=null,reformT=10;
+function yOf(k){return k==='P2'?214:k==='Y1'?248:276;}
+function yName(k){return k==='P2'?'発車線':k==='Y1'?'留置1':'留置2';}
+
+/* ---------- 状態 ---------- */
+let sorted=0,departed=0,arrival=null,rollings=[],parts=[],pax=[],idleT=1,HL=[];
+let local=null,express=null,demu=null,nextLocalT=3,nextExpressT=7,nextDemuT=15;
+let localsServed=0,expressPassed=0,demuServed=0;
+let shunt=null;
+let tt={ang:0,tgt:0,t:8,rot:false};
+const LOC_KINDS=['pax','pax','pax','pax','pax'];
+const EXP_KINDS=['bag','pax','pax','pax','pax','pax','sleep'];
+function newCar(){return{type:pick(['box','box','box','tank','flat']),tcol:pick(['#4f6f5f','#5a5f66'])};}
+function spawnArrival(){const n=8+Math.floor(Math.random()*5),cars=[];
+  for(let i=0;i<n;i++)cars.push(newCar());
+  arrival={cars,n,released:0,headX:-n*SP-90,v:0,state:'approach',locoX:0,pb:0,
+    kind:Math.random()<.3?'diesel':'tank'};
+  pushLog('貨物到着列車 入線 '+n+'両('+(arrival.kind==='diesel'?'DD13':'蒸機')+')');}
+function smoke(x,y,dir,moving,diesel){
+  if(diesel){if(Math.random()<(moving?.22:.02))
+    parts.push({x,y,vx:(moving?-dir*6:0)+(Math.random()*6-3),vy:-30-Math.random()*10,
+      r:1.5+Math.random()*1.5,a:.4,kind:'exhaust'});}
+  else if(Math.random()<(moving?.5:.06))
+    parts.push({x,y,vx:(moving?-dir*8:0)+(Math.random()*8-4),vy:-26-Math.random()*12,
+      r:2.5+Math.random()*3,a:.45,kind:'smoke'});}
+function burst(x,y,dir){for(let i=0;i<7;i++)parts.push({x:x-dir*i*3,y:y+Math.random()*4-2,
+  vx:-dir*10+Math.random()*10-5,vy:-30-Math.random()*15,r:3+Math.random()*3,a:.55,kind:'smoke'});}
+function steam(x,y){parts.push({x,y,vx:Math.random()*6-3,vy:-14-Math.random()*8,
+  r:2+Math.random()*2,a:.4,kind:'steam'});}
+function spark(x,y){for(let i=0;i<4;i++)parts.push({x,y,vx:Math.random()*40-20,
+  vy:-Math.random()*30,a:.8,r:1.4,kind:'spark'});}
+function spawnPaxDoors(doors,yT,yP){
+  for(let k=0;k<5;k++)pax.push({x:doors[k%doors.length],y:yT,
+    tx:doors[k%doors.length]+(Math.random()*70-35),ty:yP});
+  for(let k=0;k<4;k++)pax.push({x:340+Math.random()*520,y:yP,tx:doors[k%doors.length],ty:yT});}
+function spawnPaxDemu(b){spawnPaxDoors([b-30,b-60],180,193);}
+function canShunt(){return tracks.some(t=>t.phase==='open'&&!t.busy&&t.cars.length>=3)&&
+  tracks.some(t=>t.phase==='open'&&!t.busy&&CAP-t.cars.length-t.reserved>=3);}
+function startShunt(){
+  const srcs=tracks.filter(t=>t.phase==='open'&&!t.busy&&t.cars.length>=3);
+  if(!srcs.length)return false;
+  const src=pick(srcs);
+  const dsts=tracks.filter(t=>t!==src&&t.phase==='open'&&!t.busy&&CAP-t.cars.length-t.reserved>=3);
+  if(!dsts.length)return false;
+  const dst=pick(dsts),m=Math.min(3,src.cars.length-1);
+  src.busy=true;dst.busy=true;
+  shunt={src,dst,m,cars:[],phase:'descend',s:0,v:0,timer:0,released:0,
+    cutsLeft:Math.random()<.6?1:0,busy:[src,dst],kind:Math.random()<.6?'diesel':'tank',
+    sT:src.route.sStraight+(src.cars[src.cars.length-1].x-266)-26,x:200};
+  pushLog('入換: '+(tracks.indexOf(src)+1)+'線→'+(tracks.indexOf(dst)+1)+'線 引き上げ開始');
+  return true;}
+function releaseRolling(t,car,v0){t.reserved++;
+  const slot=t.cars.length+t.reserved-1,stopX=1050-slot*SP;
+  rollings.push({trk:t,car,s:0,v:v0,targetS:t.route.sStraight+(stopX-266),stopX,
+    ti:tracks.indexOf(t),stall:Math.random()<.12?0:null,st:0});}
+/* 客車編成替え */
+function startReform(){
+  const opts=[];
+  if(yard.Y1.coaches.length>=2&&yard.Y2.coaches.length<=4)opts.push(['Y1','Y2']);
+  if(yard.Y2.coaches.length>=2&&yard.Y1.coaches.length<=4)opts.push(['Y2','Y1']);
+  if(!p2cars.length&&!local){
+    if(yard.Y1.coaches.length>=3)opts.push(['Y1','P2']);
+    if(yard.Y2.coaches.length>=3)opts.push(['Y2','P2']);}
+  if(!opts.length)return false;
+  const m=pick(opts);
+  reform={src:m[0],dst:m[1],phase:'in',x:230,v:0,y:yOf(m[0]),cars:[],timer:0,t:0,y0:0,y1:0,tx:0};
+  pushLog('客車入換: '+yName(m[0])+'→'+yName(m[1]));
+  dieselHorn();
+  return true;}
+
+/* ---------- 更新 ---------- */
+function update(dt){
+  clock+=dt*1.5;
+  if(!tt.rot){tt.t-=dt;if(tt.t<=0){tt.rot=true;tt.tgt=tt.ang+Math.PI;}}
+  else{tt.ang+=dt*Math.PI/4;
+    if(tt.ang>=tt.tgt){tt.ang=tt.tgt;tt.rot=false;tt.t=15+Math.random()*20;}}
+  /* 客車入換(編成替え) */
+  if(!reform){reformT-=dt;if(reformT<=0){if(!startReform())reformT=6;}}
+  else{const R=reform;
+    if(R.phase==='in'){const d=292-R.x;
+      R.v=Math.min(R.v+40*dt,40);const al=Math.sqrt(2*50*Math.max(0,d));
+      if(al<R.v)R.v=al;R.x+=R.v*dt;chuff(R.v,true);
+      if(d<=1){R.x=292;R.phase='couple';R.timer=.7;}}
+    else if(R.phase==='couple'){R.timer-=dt;
+      if(R.timer<=0){R.cars=yard[R.src].coaches.splice(0,Math.min(3,yard[R.src].coaches.length));
+        R.phase='pull';clank(.12);}}
+    else if(R.phase==='pull'){R.v=Math.min(R.v+40*dt,35);R.x-=R.v*dt;chuff(R.v,true);
+      if(R.x<=250){R.x=250;R.phase='transfer';R.y0=R.y;R.y1=yOf(R.dst);R.t=0;}}
+    else if(R.phase==='transfer'){R.t+=dt/1.2;
+      R.y=R.y0+(R.y1-R.y0)*Math.min(1,R.t);
+      if(R.t>=1){R.phase='push';R.v=0;
+        R.tx=R.dst==='P2'?620:292+yard[R.dst].coaches.length*COACH;}}
+    else if(R.phase==='push'){const d=R.tx-R.x;
+      R.v=Math.min(R.v+40*dt,30);const al=Math.sqrt(2*40*Math.max(0,d));
+      if(al<R.v)R.v=al;R.x+=R.v*dt;chuff(R.v,true);
+      if(d<=1){
+        if(R.dst==='P2'){p2cars=R.cars.map((k,i)=>({kind:k,x:648+i*COACH}));
+          pushLog('客車入換: 発車線に編成組成('+p2cars.length+'両)');}
+        else yard[R.dst].coaches.push(...R.cars);
+        R.phase='exit';R.v=0;clank(.1);}}
+    else{R.x-=40*dt;if(R.x<190){reform=null;reformT=12+Math.random()*15;}}}
+  /* 客車:普通(組成発車 or 通過入線) */
+  if(!local){nextLocalT-=dt;
+    if(nextLocalT<=0){
+      const busyP2=reform&&reform.dst==='P2';
+      if(!busyP2){
+        if(p2cars.length>=2){
+          local={mode:'reform',state:'rin',x:-280,v:0,dwell:0,raX:0,
+            kinds:p2cars.map(c=>c.kind),coachX:p2cars.map(c=>c.x)};
+          pushLog('普通: 組成編成で発車準備('+local.kinds.length+'両)');}
+        else{local={mode:'thru',state:'in',x:-280,v:0,dwell:0,raX:0,coachX:null,
+            kinds:LOC_KINDS.slice()};
+          pushLog('普通列車 入線');}}}}
+  else{const L=local;
+    if(L.state==='in'||L.state==='rin'){
+      const tgt=L.mode==='reform'?L.coachX[0]-28:820;
+      L.v=Math.min(L.v+40*dt,90);
+      const d=tgt-L.x,al=Math.sqrt(2*50*Math.max(0,d));if(al<L.v)L.v=al;
+      L.x+=L.v*dt;smoke(L.x+17,192,1,L.v>3,false);
+      if(L.v>5&&Math.random()<L.v*dt/26)chuff(L.v,false);
+      if(d<=1&&L.v<4){L.x=tgt;
+        if(L.mode==='reform'){L.state='rcouple';L.timer=.8;}
+        else{L.state='dwell';L.dwell=6;spawnPaxDoors([0,1,2,3,4].map(i=>820-52-i*COACH),212,197);}}}
+    else if(L.state==='rcouple'){L.timer-=dt;
+      if(L.timer<=0){p2cars=[];clank(.15);L.state='rdwell';L.dwell=5;
+        spawnPaxDoors(L.kinds.map((k,i)=>L.x+28+i*COACH),212,197);}}
+    else if(L.state==='rdwell'||L.state==='dwell'){L.dwell-=dt;
+      smoke(L.x+17,192,1,false,false);
+      if(Math.random()<dt*2.5)steam(L.x-52-Math.floor(Math.random()*5)*COACH,206);
+      if(L.dwell<=0){
+        if(L.mode==='reform'){L.state='out';burst(L.x+17,192,1);steamWhistle();
+          pushLog('普通列車 発車(組成)');}
+        else{L.coachX=[0,1,2,3,4].map(i=>L.x-52-i*COACH);
+          if(p2cars.length===0&&!reform&&Math.random()<.5){
+            p2cars=[{kind:L.kinds[3],x:678},{kind:L.kinds[4],x:648}];
+            L.kinds=L.kinds.slice(0,3);
+            pushLog('普通: 末尾2両を切り離し留置');}
+          if(Math.random()<.5){L.state='ra1';L.raX=L.x;L.v=0;pushLog('普通: 機回し開始');}
+          else{L.state='out';burst(L.x+17,192,1);steamWhistle();pushLog('普通列車 発車(右)');}}}}
+    else if(L.state==='out'){L.v=Math.min(L.v+35*dt,105);L.x+=L.v*dt;smoke(L.x+17,192,1,true,false);
+      if(Math.random()<L.v*dt/26)chuff(L.v,false);
+      if(L.x>1560){local=null;localsServed++;nextLocalT=9+Math.random()*8;}}
+    else if(L.state==='ra1'){L.v=Math.min(L.v+60*dt,120);L.raX+=L.v*dt;
+      smoke(L.raX+17,192,1,true,false);
+      if(Math.random()<L.v*dt/26)chuff(L.v,false);
+      if(L.raX>1310){L.raX=1310;L.state='ra2';L.v=0;}}
+    else if(L.state==='ra2'){if(!express&&!demu){L.v=Math.min(L.v+40*dt,70);L.raX-=L.v*dt;
+        smoke(L.raX-17,154,-1,true,false);
+        if(Math.random()<L.v*dt/26)chuff(L.v,false);}
+      if(L.raX<=L.coachX[4]-28){L.raX=L.coachX[4]-28;L.state='ra3';L.timer=.8;
+        spark(L.raX+25,206);clank(.12);}}
+    else if(L.state==='ra3'){L.timer-=dt;smoke(L.raX-17,192,-1,false,false);
+      if(L.timer<=0){L.state='outL';L.v=0;burst(L.raX-17,192,-1);steamWhistle();pushLog('普通列車 発車(左)');}}
+    else if(L.state==='outL'){L.v=Math.min(L.v+35*dt,95);L.raX-=L.v*dt;
+      L.coachX=L.coachX.map(x=>x-L.v*dt);smoke(L.raX-17,192,-1,true,false);
+      if(Math.random()<L.v*dt/26)chuff(L.v,false);
+      if(L.raX<-320){local=null;localsServed++;nextLocalT=9+Math.random()*8;}}}
+  /* 特急(蒸機) */
+  if(!express){nextExpressT-=dt;
+    if(nextExpressT<=0&&!demu&&!(local&&(local.state==='ra1'||local.state==='ra2')))
+      {express={x:-330,v:60};if(Math.random()<.4)steamWhistle();pushLog('特急列車 通過(蒸機)');}}
+  else{express.v=Math.min(express.v+30*dt,140);express.x+=express.v*dt;
+    smoke(express.x+17,154,1,true,false);
+    if(Math.random()<express.v*dt/26)chuff(express.v,false);
+    if(express.x>1620){express=null;expressPassed++;nextExpressT=8+Math.random()*10;}}
+  /* キハ */
+  if(!demu){nextDemuT-=dt;
+    if(nextDemuT<=0&&!express&&!(local&&(local.state==='ra1'||local.state==='ra2'))){
+      const stop=Math.random()<.5;
+      demu={x:-260,v:80,state:stop?'in':'pass',dwell:0};
+      if(!stop&&Math.random()<.5)dieselHorn();
+      pushLog(stop?'気動車特急 入線(停車)':'気動車特急 通過');}}
+  else{const D=demu;
+    if(D.state==='pass'){D.v=Math.min(D.v+20*dt,150);D.x+=D.v*dt;
+      smoke(D.x+18,164,1,true,true);
+      if(Math.random()<D.v*dt/22)chuff(D.v,true);
+      if(D.x>1620){demu=null;demuServed++;nextDemuT=14+Math.random()*12;}}
+    else if(D.state==='in'){D.v=Math.min(D.v+30*dt,110);
+      const d=800-D.x,al=Math.sqrt(2*50*Math.max(0,d));if(al<D.v)D.v=al;
+      D.x+=D.v*dt;smoke(D.x+18,164,1,D.v>3,true);
+      if(Math.random()<D.v*dt/22)chuff(D.v,true);
+      if(d<=1&&D.v<4){D.x=800;D.state='dwell';D.dwell=4;spawnPaxDemu(800);}}
+    else if(D.state==='dwell'){D.dwell-=dt;
+      if(Math.random()<dt*2)steam(D.x-30-Math.floor(Math.random()*2)*30,168);
+      if(D.dwell<=0){D.state='out';burst(D.x+20,164,1);dieselHorn();pushLog('気動車特急 発車');}}
+    else{D.v=Math.min(D.v+30*dt,140);D.x+=D.v*dt;smoke(D.x+18,164,1,true,true);
+      if(Math.random()<D.v*dt/22)chuff(D.v,true);
+      if(D.x>1620){demu=null;demuServed++;nextDemuT=14+Math.random()*12;}}}
+  /* 乗客小人 */
+  for(let i=pax.length-1;i>=0;i--){const p=pax[i],dx=p.tx-p.x,dy=p.ty-p.y,
+    d=Math.hypot(dx,dy);if(d<2){pax.splice(i,1);continue;}
+    p.x+=dx/d*22*dt;p.y+=dy/d*22*dt;}
+  /* 統合スケジューラ(貨物) */
+  if(!arrival&&!shunt){idleT-=dt;
+    if(idleT<=0){
+      if(Math.random()<.55&&canShunt())startShunt();
+      if(!shunt)spawnArrival();
+      idleT=1.5+Math.random()*2;}}
+  else if(arrival){const a=arrival,dz=a.kind==='diesel',
+    lx=a.headX-(a.n-a.released)*SP-28;
+    if(a.state==='approach'){const d=190-a.headX;
+      a.v=Math.min(a.v+50*dt,55);const al=Math.sqrt(2*45*Math.max(0,d));
+      if(al<a.v)a.v=al;a.headX+=a.v*dt;smoke(lx+17,278,1,a.v>3,dz);
+      if(a.v>5&&Math.random()<a.v*dt/26)chuff(a.v,dz);
+      if(d<=.8){a.headX=190;a.v=0;a.state='push';}}
+    else if(a.state==='pullback'){const d=a.headX-a.pb;
+      a.v=Math.min(a.v+50*dt,38);const al=Math.sqrt(2*60*Math.max(0,d));
+      if(al<a.v)a.v=al;a.headX-=a.v*dt;smoke(lx+17,278,-1,a.v>3,dz);
+      if(a.v>5&&Math.random()<a.v*dt/26)chuff(a.v,dz);
+      if(d<=1){a.headX=a.pb;a.v=0;a.state='push';}}
+    else if(a.state==='push'){
+      if(a.headX>=199.5){
+        const clear=!rollings.some(r=>r.s<100);
+        const cand=tracks.filter(t=>t.phase==='open'&&!t.busy&&CAP-t.cars.length-t.reserved>0);
+        if(clear&&cand.length){
+          releaseRolling(pick(cand),a.cars[a.released],Math.max(24,a.v));
+          a.released++;a.headX-=SP;spark(200,292);humpSound();
+          if(a.released>=a.n){a.state='exit';a.locoX=a.headX-28;a.v=0;
+            burst(a.locoX+17,278,1);if(!dz)steamWhistle();else dieselHorn();
+            pushLog('突き放し完了 機回し発車');}
+          else{a.state='pullback';a.pb=a.headX-55;a.v=0;}}
+        else a.v=0;}
+      else{a.v=Math.min(a.v+60*dt,42);a.headX+=a.v*dt;smoke(lx+17,278,1,true,dz);
+        if(Math.random()<a.v*dt/26)chuff(a.v,dz);}}
+    else{a.v=Math.min(a.v+40*dt,75);a.locoX+=a.v*dt;smoke(a.locoX+17,278,1,a.v>3,dz);
+      if(Math.random()<a.v*dt/26)chuff(a.v,dz);
+      if(a.locoX>1300){arrival=null;idleT=1.2;}}}
+  else if(shunt){const S=shunt,dz=S.kind==='diesel';
+    if(S.phase==='descend'){const d=S.sT-S.s;
+      S.v=Math.min(S.v+40*dt,45);const al=Math.sqrt(2*50*Math.max(0,d));
+      if(al<S.v)S.v=al;S.s+=S.v*dt;
+      const p=posAt(S.src.route,S.s);smoke(p.x+17,p.y-22,1,S.v>3,dz);
+      if(S.v>5&&Math.random()<S.v*dt/26)chuff(S.v,dz);
+      if(d<=1&&S.v<4){S.phase='couple';S.timer=.8;}}
+    else if(S.phase==='couple'){S.timer-=dt;
+      if(S.timer<=0){S.cars=S.src.cars.splice(S.src.cars.length-S.m,S.m);
+        S.phase='pull';const p=posAt(S.src.route,S.s);spark(p.x-20,S.src.y-8);clank(.12);}}
+    else if(S.phase==='pull'){S.v=Math.min(S.v+40*dt,40);S.s-=S.v*dt;
+      const p=posAt(S.src.route,S.s);smoke(p.x+17,p.y-22,-1,S.v>3,dz);
+      if(S.v>5&&Math.random()<S.v*dt/26)chuff(S.v,dz);
+      if(S.s<=0){S.s=0;S.phase='release';pushLog('入換: 引き上げ完了 突き放し');}}
+    else if(S.phase==='release'){smoke(217,278,1,false,dz);
+      if(!rollings.some(r=>r.s<100)&&S.released<S.cars.length){
+        releaseRolling(S.dst,S.cars[S.released],16);S.released++;humpSound();}
+      if(S.released>=S.cars.length&&!rollings.some(r=>r.trk===S.dst&&r.s<120)){
+        if(S.cutsLeft>0&&S.src.cars.length>=2){S.cutsLeft--;
+          const d2s=tracks.filter(t=>!t.busy&&t.phase==='open'&&CAP-t.cars.length-t.reserved>=2);
+          let d2=null;
+          if(d2s.length&&Math.random()<.6)d2=pick(d2s);
+          else if(CAP-S.dst.cars.length-S.dst.reserved>=2)d2=S.dst;
+          if(d2){if(!d2.busy){d2.busy=true;S.busy.push(d2);}
+            S.dst=d2;S.m=Math.min(3,S.src.cars.length-1);
+            S.cars=[];S.released=0;S.phase='descend';S.s=0;S.v=0;
+            S.sT=S.src.route.sStraight+(S.src.cars[S.src.cars.length-1].x-266)-26;
+            pushLog('入換: 2カット目 '+(tracks.indexOf(S.src)+1)+'線→'+(tracks.indexOf(d2)+1)+'線');}
+          else{S.phase='exit';S.x=200;S.v=0;}}
+        else{S.phase='exit';S.x=200;S.v=0;}}}
+    else{S.v=Math.min(S.v+40*dt,55);S.x-=S.v*dt;smoke(S.x-17,278,-1,true,dz);
+      if(S.v>5&&Math.random()<S.v*dt/26)chuff(S.v,dz);
+      if(S.x<-80){S.busy.forEach(t=>t.busy=false);shunt=null;idleT=1.2;}}}
+  /* 転がり貨車 */
+  for(let i=rollings.length-1;i>=0;i--){const r=rollings[i];
+    if(r.stall!=null&&r.stall===0&&r.s>r.targetS*.55){r.stall=1;r.st=2;
+      pushLog('貨車停滞! 係員推進('+(r.ti+1)+'線)');}
+    if(r.stall===1){r.st-=dt;r.v=0;if(r.st<=0)r.stall=2;}
+    else{r.v=Math.min(r.v+40*dt,85);
+      const d=r.targetS-r.s,al=Math.sqrt(2*30*Math.max(0,d));
+      if(al<r.v)r.v=al;r.s+=r.v*dt;
+      if(Math.random()<r.v*dt/26)noise(.03,2600,.025,'bandpass');}
+    if(r.stall!==1&&r.targetS-r.s<=1&&r.v<6){
+      r.trk.cars.push({car:r.car,x:r.stopX});r.trk.reserved--;
+      sorted++;spark(r.stopX+13,r.trk.y-8);clank(.1);brakeSqueal();rollings.splice(i,1);}}
+  /* 仕分線:組成・発車 */
+  tracks.forEach(t=>{if(t.busy)return;
+    if(t.phase==='open'){if(t.cars.length>=CAP){t.phase='loco-in';t.loco={x:1290,v:0};
+      t.locoKind=Math.random()<.25?'diesel':'tender';}}
+    else if(t.phase==='loco-in'){const L=t.loco;L.v=Math.min(L.v+40*dt,45);L.x-=L.v*dt;
+      smoke(L.x-17,t.y-22,-1,L.v>3,t.locoKind==='diesel');
+      if(L.v>5&&Math.random()<L.v*dt/26)chuff(L.v,t.locoKind==='diesel');
+      if(L.x<=t.cars[0].x+39){L.x=t.cars[0].x+39;t.phase='couple';t.timer=1;
+        spark(L.x-25,t.y-8);clank(.15);}}
+    else if(t.phase==='couple'){smoke(t.loco.x-17,t.y-22,-1,false,t.locoKind==='diesel');
+      t.timer-=dt;if(t.timer<=0){t.phase='depart';t.loco.v=0;
+        if(t.locoKind!=='diesel'){burst(t.loco.x-17,t.y-22,-1);steamWhistle();}
+        else dieselHorn();
+        pushLog((tracks.indexOf(t)+1)+'線 '+DESTS[tracks.indexOf(t)].name+'行 組成完了');}}
+    else{const L=t.loco;L.v=Math.min(L.v+30*dt,75);L.x+=L.v*dt;
+      smoke(L.x-17,t.y-22,-1,L.v>3,t.locoKind==='diesel');
+      if(L.v>5&&Math.random()<L.v*dt/26)chuff(L.v,t.locoKind==='diesel');
+      t.cars.forEach(c=>c.x+=L.v*dt);
+      if(t.cars[t.cars.length-1].x-13>1255){t.cars=[];t.phase='open';t.loco=null;departed++;
+        pushLog('組成列車 発車');}}});
+  /* 粒子 */
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.a-=dt*(p.kind==='spark'?2.5:p.kind==='steam'?.5:.35);
+    if(p.kind==='smoke'||p.kind==='steam')p.r+=9*dt;
+    if(p.a<=0)parts.splice(i,1);}}
+
+/* ---------- 静景 ---------- */
+const st=document.createElement('canvas');st.width=W;st.height=H;
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+(function renderStatic(){const c=st.getContext('2d');
+  let g=c.createLinearGradient(0,0,0,170);
+  g.addColorStop(0,'#9fb0ba');g.addColorStop(1,'#e6e2d4');c.fillStyle=g;c.fillRect(0,0,W,170);
+  c.fillStyle='rgba(240,240,238,.75)';
+  [[179,52],[186,40],[194,28],[304,64],[311,52],[704,48],[712,36],[1104,52],[1112,40]]
+    .forEach(p=>{c.beginPath();c.arc(p[0],p[1],6,0,7);c.fill();});
+  c.fillStyle='rgba(105,95,90,.8)';
+  c.fillRect(150,120,95,45);c.fillRect(252,132,70,33);c.fillRect(660,126,110,39);c.fillRect(1060,120,100,45);
+  c.fillRect(175,58,8,62);c.fillRect(300,70,7,60);c.fillRect(700,55,9,70);c.fillRect(1100,60,8,60);
+  c.fillStyle='#7a8069';c.fillRect(0,158,W,12);
+  c.fillStyle='#b0a284';c.fillRect(0,165,W,555);
+  c.fillStyle='rgba(140,150,100,.45)';
+  [[120,700,60,10],[520,706,80,10],[1140,690,70,10],[60,250,40,8],[1230,240,30,8]]
+    .forEach(e=>{c.beginPath();c.ellipse(e[0],e[1],e[2],e[3],0,0,7);c.fill();});
+  c.fillStyle='#c9c5b8';c.fillRect(300,190,600,18);
+  c.fillStyle='#d9b64a';c.fillRect(300,190,600,2);
+  c.fillStyle='#5f8f72';c.fillRect(400,192,400,7);
+  c.fillStyle='#777';for(let x=410;x<=790;x+=76)c.fillRect(x,199,2,9);
+  c.fillStyle='#efe6d0';c.fillRect(560,196,44,10);
+  c.fillStyle='#333';c.font='8px serif';c.fillText('月如',576,204);
+  [[350,196,'#556'],[620,196,'#655'],[860,196,'#565']].forEach(p=>{
+    c.fillStyle=p[2];c.fillRect(p[0],p[1]-4,2,4);c.beginPath();c.arc(p[0]+1,p[1]-5,1.3,0,7);c.fill();});
+  const lines=[176,214,248,276,300,...tracks.map(t=>t.y)];
+  lines.forEach(y=>{c.fillStyle='#c6b89c';c.fillRect(0,y-2,W,10);
+    c.fillStyle='rgba(120,110,95,.5)';
+    for(let x=0;x<W;x+=5)c.fillRect(x,y-1+((x*7)%6),1.2,1.2);
+    c.fillStyle='#6a4a2f';for(let x=2;x<W;x+=8)c.fillRect(x,y+1,2,5);
+    c.strokeStyle='#3f3f3f';c.lineWidth=2;
+    c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();});
+  /* 留置線は300-900のみ再描画(両端を草地に) */
+  [248,276].forEach(y=>{c.fillStyle='#b0a284';c.fillRect(0,y-2,300,10);c.fillRect(900,y-2,W-900,10);
+    c.fillStyle='#c6b89c';c.fillRect(300,y-2,600,10);});
+  /* ラダー線(連絡線) */
+  [bezPts([250,214],[250,214],[250,248],[300,248]),bezPts([250,214],[250,214],[250,276],[300,276])]
+  .forEach(pts=>{c.strokeStyle='#c6b89c';c.lineWidth=8;c.beginPath();
+    pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();
+    c.strokeStyle='#3f3f3f';c.lineWidth=2;c.beginPath();
+    pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();});
+  tracks.forEach(t=>{c.strokeStyle='#c6b89c';c.lineWidth=9;c.beginPath();
+    t.route.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();
+    c.strokeStyle='#3f3f3f';c.lineWidth=2;c.beginPath();
+    t.route.pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.stroke();});
+  c.fillStyle='rgba(120,100,70,.55)';
+  c.beginPath();c.ellipse(206,308,46,13,0,0,7);c.fill();
+  c.fillStyle='#8a8a80';c.beginPath();c.arc(150,662,30,0,7);c.fill();
+  c.fillStyle='#6a6a62';c.beginPath();c.arc(150,662,26,0,7);c.fill();
+  c.strokeStyle='#4a4a44';c.lineWidth=2;c.beginPath();c.arc(150,662,28,0,7);c.stroke();
+  c.fillStyle='#a3543f';rr(c,60,120,32,46,3);c.fill();
+  c.fillStyle='#7a4a3a';rr(c,56,94,40,28,5);c.fill();
+  c.fillStyle='#5a3a2a';c.beginPath();c.moveTo(54,94);c.lineTo(76,82);c.lineTo(98,94);c.closePath();c.fill();
+  c.fillStyle='#a08058';c.fillRect(700,660,76,36);
+  c.fillStyle='#5a4a3a';c.beginPath();c.moveTo(694,660);c.lineTo(738,644);c.lineTo(782,660);c.closePath();c.fill();
+  c.fillStyle='#4a3a2a';c.fillRect(732,676,14,20);
+  c.fillStyle='#cfe0e8';c.fillRect(708,668,14,10);c.fillRect(756,668,14,10);
+  c.fillStyle='#efe6d0';c.fillRect(706,650,64,12);
+  c.fillStyle='#333';c.font='9px serif';c.fillText('室務事所編成',710,659);
+  c.fillStyle='#8a6a42';c.fillRect(795,684,14,12);c.fillRect(811,688,12,8);
+  function pole(x,y){c.strokeStyle='#4a3a2a';c.lineWidth=2;
+    c.beginPath();c.moveTo(x,y);c.lineTo(x,y-30);c.stroke();
+    c.beginPath();c.moveTo(x-8,y-24);c.lineTo(x+8,y-24);c.stroke();
+    c.fillStyle='#d8d8c8';c.fillRect(x-7,y-27,2,3);c.fillRect(x+5,y-27,2,3);}
+  for(let x=100;x<=1200;x+=160)pole(x,296);
+  for(let x=320;x<=1200;x+=200)pole(x,706);
+  LAMPS.forEach(p=>{c.strokeStyle='#5a5a5a';c.lineWidth=2.5;
+    c.beginPath();c.moveTo(p[0],p[1]+34);c.lineTo(p[0],p[1]);c.stroke();
+    c.fillStyle='#3a3a3a';c.fillRect(p[0]-4,p[1]-3,8,5);});
+  c.font='10px sans-serif';
+  tracks.forEach((t,k)=>{c.fillStyle='#efe6d0';rr(c,1212,t.y-20,15,17,2);c.fill();
+    c.strokeStyle='#555';c.lineWidth=1;rr(c,1212,t.y-20,15,17,2);c.stroke();
+    c.fillStyle='#333';c.fillText(k+1,1217,t.y-7);});
+  c.fillStyle='#efe6d0';rr(c,905,240,15,17,2);c.fill();c.fillStyle='#333';c.fillText('留1',907,252);
+  c.fillStyle='#efe6d0';rr(c,905,268,15,17,2);c.fill();c.fillStyle='#333';c.fillText('留2',907,280);
+  c.fillStyle='#2f4f3f';rr(c,960,146,170,26,3);c.fill();
+  c.fillStyle='#e8e0d0';c.font='14px serif';c.fillText('如 月 ターミナル',975,164);
+  c.fillStyle='#5a2a2a';rr(c,140,272,44,14,2);c.fill();
+  c.fillStyle='#e8e0d0';c.font='9px sans-serif';c.fillText('ハンプ',150,282);
+})();
+
+/* ---------- 動体 ---------- */
+function drawCar(x,y,car,col,tilt){ctx.save();ctx.translate(x,y);ctx.rotate(tilt||0);
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath();ctx.arc(-8,-3,3,0,7);ctx.arc(8,-3,3,0,7);ctx.fill();
+  ctx.fillStyle='#2a2a2a';ctx.fillRect(-13,-7,26,3);
+  if(car.type==='box'){ctx.fillStyle='#7a4a2e';ctx.fillRect(-13,-17,26,10);
+    ctx.fillStyle='#3f3226';ctx.fillRect(-14,-18,28,3);
+    ctx.strokeStyle='rgba(0,0,0,.3)';ctx.lineWidth=1;ctx.strokeRect(-3,-16,6,8);
+    ctx.fillStyle='#e8e0d0';ctx.fillRect(-11,-15,6,3);
+    if(col){ctx.fillStyle=col;ctx.fillRect(-13,-19.5,26,2);}}
+  else if(car.type==='tank'){ctx.fillStyle=car.tcol;rr(ctx,-12,-16,24,9,4);ctx.fill();
+    ctx.fillRect(-3,-19,6,3);}
+  else{ctx.fillStyle='#c9a86a';ctx.fillRect(-12,-12,24,5);
+    ctx.fillStyle='#6a4a2f';ctx.fillRect(-12,-13,2,7);ctx.fillRect(10,-13,2,7);}
+  ctx.restore();}
+function drawLoco(x,y,dir,kind){ctx.save();ctx.translate(x,y);ctx.scale(dir,1);
+  if(kind==='diesel'){
+    ctx.fillStyle='#161616';
+    for(let wx=-16;wx<=16;wx+=8){ctx.beginPath();ctx.arc(wx,-3,2.5,0,7);ctx.fill();}
+    ctx.fillStyle='#7a2f26';
+    ctx.fillRect(-22,-8,44,4);ctx.fillRect(0,-15,20,8);ctx.fillRect(-20,-13,14,6);
+    ctx.fillRect(-7,-21,12,14);
+    ctx.fillStyle='#9fb7c4';ctx.fillRect(-5,-19,4,4);ctx.fillRect(1,-19,4,4);
+    ctx.fillStyle='#333';ctx.fillRect(8,-17,2,3);
+    ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(-21,-9);ctx.lineTo(21,-9);ctx.stroke();
+    ctx.fillStyle='#8a2a2a';ctx.fillRect(21,-7,2,5);
+    ctx.restore();return;}
+  ctx.fillStyle='#161616';
+  if(kind==='tender'){[-14,-4,6].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,5,0,7);ctx.fill();});
+    ctx.fillStyle='#8a2a2a';[-14,-4,6].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,2,0,7);ctx.fill();});
+    ctx.fillStyle='#161616';ctx.beginPath();ctx.arc(-24,-3,3,0,7);ctx.arc(16,-3,3,0,7);ctx.fill();}
+  else if(kind==='pass'){[-12,0,10].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,5,0,7);ctx.fill();});
+    ctx.fillStyle='#8a2a2a';[-12,0,10].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,2,0,7);ctx.fill();});
+    ctx.fillStyle='#161616';ctx.beginPath();ctx.arc(-22,-3,3,0,7);ctx.arc(16,-3,3,0,7);ctx.fill();}
+  else{[-14,-4,8].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,4.5,0,7);ctx.fill();});
+    ctx.fillStyle='#8a2a2a';[-14,-4,8].forEach(wx=>{ctx.beginPath();ctx.arc(wx,-4,1.8,0,7);ctx.fill();});}
+  ctx.fillStyle='#161616';
+  ctx.fillRect(-18,-16,36,10);ctx.fillRect(16,-15,6,9);
+  ctx.fillRect(-26,-24,10,18);ctx.fillRect(15,-22,4,7);
+  ctx.beginPath();ctx.arc(2,-16,3.5,0,7);ctx.arc(8,-16,3,0,7);ctx.fill();
+  if(kind!=='tank'){ctx.fillRect(-40,-19,13,12);ctx.fillStyle='#333';ctx.fillRect(-40,-21,13,3);}
+  ctx.fillStyle='#8a2a2a';ctx.fillRect(20,-13,3,8);
+  ctx.strokeStyle=kind==='pass'?'rgba(255,255,255,.7)':'rgba(255,255,255,.4)';
+  ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-24,-18);ctx.lineTo(18,-18);ctx.stroke();
+  ctx.restore();}
+function loco(x,y,dir,kind){drawLoco(x,y,dir,kind);HL.push({x,y,dir});}
+function drawCoach(x,y,kind){ctx.save();ctx.translate(x,y);
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath();ctx.arc(-9,-3,3,0,7);ctx.arc(9,-3,3,0,7);ctx.fill();
+  ctx.fillStyle='#2a2a2a';ctx.fillRect(-14,-7,28,3);
+  if(kind==='bag'){ctx.fillStyle='#6a4a2e';ctx.fillRect(-14,-17,28,10);
+    ctx.fillStyle='#3f3226';ctx.fillRect(-15,-18,30,3);
+    ctx.fillStyle='#d8d8c8';ctx.fillRect(-8,-15,4,4);ctx.fillRect(4,-15,4,4);}
+  else{ctx.fillStyle=kind==='sleep'?'#31536b':'#2e5e43';ctx.fillRect(-14,-18,28,11);
+    ctx.fillStyle='#b9b9b9';ctx.fillRect(-14,-19.5,28,2.5);
+    ctx.fillStyle='#d8e4e0';for(let wx=-11;wx<=9;wx+=5)ctx.fillRect(wx,-16,3.5,4);
+    ctx.fillStyle='#e8e8e0';ctx.fillRect(-14,-10,28,1.2);}
+  ctx.restore();}
+function drawDMU(x,y,kind){ctx.save();ctx.translate(x,y);
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath();ctx.arc(-9,-3,3,0,7);ctx.arc(9,-3,3,0,7);ctx.fill();
+  ctx.fillStyle='#2a2a2a';ctx.fillRect(-14,-7,28,3);
+  const body='#c45a2a',cream='#e8d8b0';
+  if(kind==='mid'){
+    ctx.fillStyle=body;ctx.fillRect(-14,-18,28,11);
+    ctx.fillStyle=cream;ctx.fillRect(-14,-12,28,2.5);
+    ctx.fillStyle='#b9b9b9';ctx.fillRect(-14,-19.5,28,2);
+    ctx.fillStyle='#cfe0e8';for(let wx=-11;wx<=7;wx+=6)ctx.fillRect(wx,-16,4,4);}
+  else{
+    if(kind==='tail')ctx.scale(-1,1);
+    ctx.fillStyle=body;ctx.beginPath();
+    ctx.moveTo(-14,-18);ctx.lineTo(8,-18);
+    ctx.quadraticCurveTo(16,-17,17,-9);ctx.lineTo(17,-7);ctx.lineTo(-14,-7);
+    ctx.closePath();ctx.fill();
+    ctx.fillStyle=cream;ctx.fillRect(-14,-12,30,2.5);
+    ctx.fillStyle='#cfe0e8';ctx.fillRect(9,-16,5,4);ctx.fillRect(-10,-16,14,4);
+    ctx.fillStyle='#ffd860';ctx.beginPath();ctx.arc(15,-9,1.8,0,7);ctx.fill();}
+  ctx.restore();}
+function drawTurntable(){ctx.save();ctx.translate(150,662);ctx.rotate(tt.ang);
+  ctx.fillStyle='#5a4a3a';ctx.fillRect(-26,-3,52,6);
+  ctx.strokeStyle='#3f3f3f';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(-26,-2);ctx.lineTo(26,-2);ctx.stroke();
+  ctx.scale(.8,.8);drawLoco(0,-4,1,'tank');ctx.restore();}
+function drawSignal(night){const clear=!arrival&&!shunt,x=46;
+  ctx.strokeStyle='#c8c8c0';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(x,300);ctx.lineTo(x,266);ctx.stroke();
+  ctx.save();ctx.translate(x,270);ctx.rotate(clear?-.6:0);
+  ctx.fillStyle='#c22a2a';ctx.fillRect(0,-2.5,26,5);
+  ctx.fillStyle='#eee';ctx.fillRect(20,-2.5,6,5);ctx.restore();
+  ctx.fillStyle=clear?'#2a8a4a':'#c22a2a';
+  ctx.beginPath();ctx.arc(x,280,3,0,7);ctx.fill();
+  if(night){ctx.save();ctx.globalCompositeOperation='lighter';
+    ctx.fillStyle=clear?'rgba(60,255,120,.35)':'rgba(255,60,60,.4)';
+    ctx.beginPath();ctx.arc(x,280,7,0,7);ctx.fill();ctx.restore();}}
+function draw(){const night=document.getElementById('night').checked;
+  HL=[];
+  ctx.clearRect(0,0,W,H);ctx.drawImage(st,0,0);
+  drawTurntable();
+  drawSignal(night);
+  /* 留置線の客車 */
+  ['Y1','Y2'].forEach(k=>yard[k].coaches.forEach((kd,i)=>drawCoach(320+i*COACH,yard[k].y,kd)));
+  p2cars.forEach(c=>drawCoach(c.x,214,c.kind));
+  /* 客車入換機 */
+  if(reform){const R=reform;
+    if(R.phase!=='in')R.cars.forEach((kd,j)=>drawCoach(R.x+28+j*COACH,R.y,kd));
+    if(R.phase!=='exit')loco(R.x,R.y,1,'diesel');}
+  tracks.forEach((t,k)=>{t.cars.forEach(c=>drawCar(c.x,t.y,c.car,DESTS[k].col,0));
+    if(t.loco)loco(t.loco.x,t.y,-1,t.locoKind);});
+  rollings.forEach(r=>{const p=posAt(r.trk.route,r.s);
+    drawCar(p.x,p.y,r.car,DESTS[r.ti].col,Math.min(.45,p.a)*.9);
+    if(r.stall===1){ctx.fillStyle='#443c34';ctx.fillRect(p.x+15,p.y-6,2,5);
+      ctx.beginPath();ctx.arc(p.x+16,p.y-7,1.4,0,7);ctx.fill();}});
+  if(arrival){const a=arrival;
+    if(a.state!=='exit')for(let j=0;j<a.n-a.released;j++)
+      drawCar(a.headX-j*SP,300,a.cars[a.released+j],null,0);
+    const lx=a.state==='exit'?a.locoX:a.headX-(a.n-a.released)*SP-28;
+    loco(lx,300,1,a.kind);}
+  if(shunt){const S=shunt;
+    if(S.phase==='exit')loco(S.x,300,-1,S.kind);
+    else{
+      if(S.phase==='pull')S.cars.forEach((c,j)=>{
+        const q=posAt(S.src.route,S.s+(j+1)*SP);
+        drawCar(q.x,q.y,c.car,null,Math.min(.4,q.a)*.9);});
+      else if(S.phase==='couple')S.cars.forEach(c=>drawCar(c.x,S.src.y,c.car,null,0));
+      const p=posAt(S.src.route,S.s);loco(p.x,p.y,1,S.kind);}}
+  if(express){loco(express.x,176,1,'pass');
+    EXP_KINDS.forEach((k,i)=>drawCoach(express.x-52-i*COACH,176,k));}
+  if(demu){drawDMU(demu.x,176,'head');drawDMU(demu.x-30,176,'mid');
+    drawDMU(demu.x-60,176,'mid');drawDMU(demu.x-90,176,'tail');
+    HL.push({x:demu.x,y:176,dir:1});}
+  if(local){const L=local;
+    if(L.state==='ra2'){loco(L.raX,176,-1,'pass');
+      L.coachX.forEach((x,i)=>drawCoach(x,214,L.kinds[i]));}
+    else if(L.state==='outL'||L.state==='ra3'){loco(L.raX,214,-1,'pass');
+      L.coachX.forEach((x,i)=>drawCoach(x,214,L.kinds[i]));}
+    else if(L.mode==='reform'){loco(L.x,214,1,'pass');
+      L.kinds.forEach((k,i)=>drawCoach(L.state==='rin'||L.state==='rcouple'?
+        L.coachX[i]:L.x+28+i*COACH,214,k));}
+    else{loco(L.x,214,1,'pass');
+      L.kinds.forEach((k,i)=>drawCoach(L.x-52-i*COACH,214,k));}}
+  pax.forEach(p=>{ctx.fillStyle='#443c34';ctx.fillRect(p.x-1,p.y-4,2,4);
+    ctx.beginPath();ctx.arc(p.x,p.y-5,1.3,0,7);ctx.fill();});
+  parts.forEach(p=>{ctx.fillStyle=p.kind==='spark'?'rgba(255,216,138,'+p.a+')':
+    p.kind==='exhaust'?'rgba(45,42,40,'+p.a+')':
+    p.kind==='steam'?'rgba(235,235,230,'+p.a+')':'rgba(95,92,88,'+p.a+')';
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.fill();});
+  if(night){
+    ctx.fillStyle='rgba(8,12,38,.55)';ctx.fillRect(0,0,W,H);
+    ctx.save();ctx.globalCompositeOperation='lighter';
+    LAMPS.forEach(p=>{ctx.fillStyle='rgba(255,220,150,.6)';
+      ctx.beginPath();ctx.arc(p[0],p[1],3,0,7);ctx.fill();
+      ctx.fillStyle='rgba(255,220,150,.13)';ctx.beginPath();ctx.moveTo(p[0],p[1]);
+      ctx.lineTo(p[0]-28,p[1]+62);ctx.lineTo(p[0]+28,p[1]+62);ctx.closePath();ctx.fill();});
+    [[715,673],[763,673]].forEach(p=>{ctx.fillStyle='rgba(255,180,80,.5)';
+      ctx.beginPath();ctx.arc(p[0],p[1],2.5,0,7);ctx.fill();
+      ctx.fillStyle='rgba(255,160,60,.15)';ctx.beginPath();ctx.arc(p[0],p[1],9,0,7);ctx.fill();});
+    [[420,196],[780,196]].forEach(p=>{ctx.fillStyle='rgba(255,220,150,.5)';
+      ctx.beginPath();ctx.arc(p[0],p[1],2.5,0,7);ctx.fill();
+      ctx.fillStyle='rgba(255,220,150,.14)';ctx.beginPath();ctx.arc(p[0],p[1],10,0,7);ctx.fill();});
+    HL.forEach(h=>{ctx.fillStyle='rgba(255,244,200,.85)';
+      ctx.beginPath();ctx.arc(h.x+h.dir*20,h.y-12,2.2,0,7);ctx.fill();
+      ctx.fillStyle='rgba(255,240,190,.16)';ctx.beginPath();
+      ctx.moveTo(h.x+h.dir*20,h.y-12);
+      ctx.lineTo(h.x+h.dir*95,h.y-26);ctx.lineTo(h.x+h.dir*95,h.y+2);
+      ctx.closePath();ctx.fill();});
+    ctx.restore();}
+  if(document.getElementById('sepia').checked){
+    ctx.globalCompositeOperation='saturation';ctx.fillStyle='#888';ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation='multiply';ctx.fillStyle='#f2e3c8';ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation='source-over';
+    const g=ctx.createRadialGradient(640,360,300,640,360,760);
+    g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(60,40,20,.45)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}}
+
+/* ---------- ループ/UI ---------- */
+const statsEl=document.getElementById('stats');
+function stats(){const ph=t=>t.phase==='open'?(t.busy?'入換中':'仕分中'):t.phase==='depart'?'発車!':'組成中';
+  statsEl.innerHTML=`<div class="card"><b>時刻</b> ${fmt()}<br><b>仕分</b> ${sorted}両 /
+   <b>発送</b> ${departed}本<br><b>客扱</b> 普${localsServed} 特${expressPassed} 気${demuServed}<br>
+   <b>留置</b> 1:${yard.Y1.coaches.length} 2:${yard.Y2.coaches.length} 発:${p2cars.length}</div>`+
+  tracks.map((t,k)=>`<div class="card"><span class="dot" style="background:${DESTS[k].col}"></span>
+   <b>${k+1}・${DESTS[k].name}</b><br>${'■'.repeat(t.cars.length)}${'□'.repeat(CAP-t.cars.length)} ${ph(t)}</div>`).join('')+
+  `<div class="card" id="logCard"><b>📋 運用ログ</b><br>${log.join('<br>')||'―'}</div>`;}
+setInterval(stats,250);
+let paused=false;
+document.getElementById('pause').onclick=e=>{paused=!paused;
+  e.target.textContent=paused?'▶ 再開':'⏸ 一時停止';};
+document.getElementById('soundBtn').onclick=e=>{
+  if(!AC)initAudio();
+  soundOn=!soundOn;if(AC)AC.resume();
+  e.target.textContent=soundOn?'🔊 サウンドON':'🔇 サウンドOFF';};
+document.getElementById('kaiBtn').onclick=e=>{
+  const k=document.getElementById('kai'),show=k.style.display!=='block';
+  k.style.display=show?'block':'none';
+  e.target.textContent=show?'📖 解説を隠す':'📖 解説を表示';};
+let last=0;
+function loop(ts){const dt=Math.min(.06,(ts-last)/1000||0);last=ts;
+  if(!paused){const sc=+document.getElementById('speed').value;update(dt*sc);}
+  draw();requestAnimationFrame(loop);}
+stats();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
