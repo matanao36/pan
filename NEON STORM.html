@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>NEON STORM - ONAMI STYLE</title>
+<style>
+  * { margin:0; padding:0; }
+  body { background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; overflow:hidden; font-family:'Courier New',monospace; }
+  #wrap { position:relative; }
+  canvas { display:block; background:#000; box-shadow:0 0 60px #f0f, 0 0 120px #0ff3; }
+  #scan { position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px);
+    mix-blend-mode:multiply; }
+  #crt { position:absolute; inset:0; pointer-events:none;
+    box-shadow:inset 0 0 120px rgba(0,0,0,.8); border-radius:8px; }
+  #hint { color:#0ff; font-size:12px; margin-top:10px; letter-spacing:2px; opacity:.7; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="960" height="540"></canvas>
+  <div id="scan"></div>
+  <div id="crt"></div>
+</div>
+<div id="hint">↑↓:移動 / SPACE:ショット / ONAMIコマンドに挑戦せよ…</div>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+// ============ 状態 ============
+let state = 'attract';   // attract | play | gameover
+let score = 0, hiScore = 0, lives = 3, frame = 0, shake = 0, flash = 0;
+let goTimer = 0, banner = null;
+let konami = [], ONAMI_SEQ = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+let goldMode = false;
+
+// ============ 音 (WebAudio) ============
+let AC = null;
+function initAudio(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); }
+function beep(f, dur, type='square', vol=0.05, slide=0){
+  if(!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = f;
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide), AC.currentTime+dur);
+  g.gain.value = vol;
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime+dur);
+  o.connect(g).connect(AC.destination);
+  o.start(); o.stop(AC.currentTime+dur);
+}
+
+// ============ 背景 (パララックス) ============
+const stars = Array.from({length:120},()=>({x:Math.random()*W, y:Math.random()*H, z:Math.random()*3+0.5, s:Math.random()*2+0.5}));
+const planets = [{x:W*0.7,y:100,r:70,c:'#f0f'},{x:W*0.3,y:400,r:45,c:'#0ff'},{x:W*1.1,y:250,r:90,c:'#ff0'}];
+let bgScroll = 0;
+
+// ============ エンティティ ============
+let player, bullets, ebullets, enemies, particles, texts;
+function reset(){
+  player = {x:150, y:H/2, r:14, inv:0, fireT:0, trail:[]};
+  bullets=[]; ebullets=[]; enemies=[]; particles=[]; texts=[];
+  score=0; lives=3; frame=0;
+}
+reset();
+
+// ============ 敵 ============
+function spawnEnemy(){
+  const t = Math.random();
+  const y = 60+Math.random()*(H-120);
+  if(t < 0.5) enemies.push({type:'drone', x:W+30, y, baseY:y, r:16, hp:1, t:Math.random()*99, spd:2.5+Math.random()*2, col:'#ff2d78'});
+  else if(t < 0.8) enemies.push({type:'shooter', x:W+30, y, r:18, hp:2, t:0, fireT:60+Math.random()*60, col:'#ffe600'});
+  else enemies.push({type:'tank', x:W+40, y, r:28, hp:6, t:Math.random()*99, col:'#7b2dff'});
+}
+function boom(x,y,col,n=20,pow=1){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, v = (Math.random()*4+1)*pow;
+    particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:30+Math.random()*20,col,r:Math.random()*4+2});
+  }
+  shake = Math.min(shake+6*pow, 18);
+  flash = Math.max(flash, 0.15*pow);
+  beep(120, 0.3, 'sawtooth', 0.08, -80);
+}
+
+// ============ AI (オートデモ用) ============
+function aiControl(){
+  let target = null, best = 1e9;
+  for(const e of enemies){
+    if(e.x > player.x && e.x - player.x < best){ best = e.x - player.x; target = e; }
+  }
+  let ty = target ? target.y : H/2;
+  let tx = target ? 160 + best*0.1 : 150;
+  // 敵弾回避
+  for(const b of ebullets){
+    if(b.x < player.x+100 && b.x > player.x-40 && Math.abs(b.y-player.y) < 40){
+      ty += (player.y < b.y ? -80 : 80);
+    }
+  }
+  ty = Math.max(40, Math.min(H-40, ty));
+  player.y += (ty - player.y) * 0.08;
+  player.x += (tx - player.x) * 0.05;
+  player.fireT -= 1;
+  if(player.fireT <= 0){ shoot(); player.fireT = goldMode ? 6 : 10; }
+}
+
+function shoot(){
+  const m = goldMode ? 3 : 1;
+  for(let i=0;i<m;i++){
+    const oy = (i-(m-1)/2)*10;
+    bullets.push({x:player.x+20, y:player.y+oy, vx:14, vy:0});
+  }
+  beep(goldMode?1400:900, 0.05, 'square', 0.02);
+}
+
+// ============ 入力 ============
+const keys = {};
+addEventListener('keydown', e=>{
+  initAudio();
+  keys[e.key] = true;
+  // ONAMIコマンド
+  konami.push(e.key.length===1 ? e.key.toLowerCase() : e.key);
+  if(konami.length > ONAMI_SEQ.length) konami.shift();
+  if(konami.join(',') === ONAMI_SEQ.join(',')){
+    goldMode = true; konami = [];
+    banner = {txt:'★ ONAMI CODE!! ★', sub:'GOLDEN SHIP UNLOCKED! 2x SCORE', t:180};
+    beep(523,0.1,'square',0.08); setTimeout(()=>beep(659,0.1,'square',0.08),100);
+    setTimeout(()=>beep(784,0.1,'square',0.08),200); setTimeout(()=>beep(1047,0.3,'square',0.1),300);
+  }
+  if(state === 'attract'){ state = 'play'; reset(); }
+  else if(state === 'gameover' && goTimer > 60){ state = 'play'; reset(); }
+  if(e.key === ' ') e.preventDefault();
+});
+addEventListener('keyup', e=> keys[e.key] = false);
+
+// ============ 更新 ============
+function update(){
+  frame++;
+  bgScroll += 3;
+  for(const s of stars){ s.x -= s.z*1.5; if(s.x < 0){ s.x = W; s.y = Math.random()*H; } }
+  for(const p of planets){ p.x -= 0.3; if(p.x < -150) p.x = W + 200; }
+  if(shake > 0) shake *= 0.85;
+  if(flash > 0) flash -= 0.05;
+  if(banner && --banner.t <= 0) banner = null;
+
+  // 敵スポーン
+  const rate = state === 'play' ? 1 : 1.2;
+  if(frame % Math.max(20, 60 - Math.floor(frame/400)) === 0) spawnEnemy();
+
+  // プレイヤー
+  if(state === 'attract') aiControl();
+  else if(state === 'play'){
+    if(keys['ArrowUp']) player.y -= 6;
+    if(keys['ArrowDown']) player.y += 6;
+    player.y = Math.max(20, Math.min(H-20, player.y));
+    player.x = 150 + (keys['ArrowRight']?30:0) - (keys['ArrowLeft']?30:0);
+    if(keys[' '] && player.fireT <= 0){ shoot(); player.fireT = goldMode ? 6 : 10; }
+    if(player.fireT > 0) player.fireT--;
+    if(player.inv > 0) player.inv--;
+  }
+  player.trail.push({x:player.x, y:player.y, life:15});
+  player.trail.forEach(t=>t.life--);
+  player.trail = player.trail.filter(t=>t.life>0);
+
+  // 弾
+  bullets.forEach(b=>b.x+=b.vx);
+  bullets = bullets.filter(b=>b.x < W+20);
+  ebullets.forEach(b=>{ b.x+=b.vx; b.y+=b.vy; });
+  ebullets = ebullets.filter(b=>b.x>-20 && b.y>-20 && b.y<H+20);
+
+  // 敵
+  for(const e of enemies){
+    e.t += 0.05;
+    if(e.type==='drone'){ e.x -= e.spd; e.y = e.baseY + Math.sin(e.t*2)*50; }
+    else if(e.type==='shooter'){
+      e.x -= 1.5;
+      if(e.x < W-100 && e.x > player.x+100) e.x -= 0; // 停止
+      if(--e.fireT <= 0){
+        const a = Math.atan2(player.y-e.y, player.x-e.x);
+        ebullets.push({x:e.x, y:e.y, vx:Math.cos(a)*4, vy:Math.sin(a)*4, r:6});
+        e.fireT = 80; beep(300,0.1,'sawtooth',0.03);
+      }
+    }
+    else { e.x -= 0.8; e.y += Math.sin(e.t)*1.5; }
+  }
+
+  // 敵弾 × プレイヤー
+  if(state === 'play' && player.inv <= 0){
+    for(const b of ebullets){
+      if(Math.hypot(b.x-player.x, b.y-player.y) < player.r + b.r){
+        lives--; boom(player.x, player.y, '#0ff', 30, 2);
+        player.inv = 120; b.x = -999;
+        if(lives <= 0){ state='gameover'; goTimer=0; hiScore = Math.max(hiScore, score); boom(player.x,player.y,'#fff',60,3); }
+        break;
+      }
+    }
+    for(const e of enemies){
+      if(Math.hypot(e.x-player.x, e.y-player.y) < e.r + player.r){
+        lives--; boom(player.x, player.y, '#0ff', 30, 2);
+        boom(e.x, e.y, e.col, 20); e.hp = 0;
+        player.inv = 120;
+        if(lives <= 0){ state='gameover'; goTimer=0; hiScore = Math.max(hiScore, score); }
+        break;
+      }
+    }
+  }
+
+  // 自弾 × 敵
+  for(const b of bullets){
+    for(const e of enemies){
+      if(e.hp > 0 && Math.hypot(b.x-e.x, b.y-e.y) < e.r + 4){
+        e.hp--; b.x = 99999;
+        particles.push({x:b.x,y:b.y,vx:0,vy:0,life:8,col:'#fff',r:3});
+        if(e.hp <= 0){
+          const pts = e.type==='tank'?500:e.type==='shooter'?200:100;
+          const p = goldMode ? pts*2 : pts;
+          score += p;
+          texts.push({x:e.x, y:e.y, txt:'+'+p, life:40, col:e.col});
+          boom(e.x, e.y, e.col, e.type==='tank'?40:18, e.type==='tank'?2:1);
+        } else beep(400,0.05,'square',0.03);
+      }
+    }
+  }
+  enemies = enemies.filter(e=>e.hp>0 && e.x > -60);
+  bullets = bullets.filter(b=>b.x < 90000);
+
+  // パーティクル
+  particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vx*=0.96; p.vy*=0.96; p.life--; });
+  particles = particles.filter(p=>p.life>0);
+  texts.forEach(t=>{ t.y -= 1; t.life--; });
+  texts = texts.filter(t=>t.life>0);
+
+  if(state === 'gameover' && ++goTimer > 300){ state = 'attract'; reset(); }
+}
+
+// ============ 描画 ============
+function drawShip(x, y, gold){
+  ctx.save();
+  ctx.translate(x, y);
+  // トレール
+  for(const t of player.trail){
+    ctx.globalAlpha = t.life/15 * 0.5;
+    ctx.fillStyle = gold ? '#ffd700' : '#00ffff';
+    ctx.beginPath(); ctx.arc(t.x-x, t.y-y, 6*(t.life/15), 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const blink = player.inv > 0 && Math.floor(player.inv/4)%2===0;
+  if(!blink){
+    ctx.shadowColor = gold ? '#ffd700' : '#00ffff';
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = gold ? '#ffd700' : '#00ffff';
+    ctx.beginPath();
+    ctx.moveTo(22,0); ctx.lineTo(-16,-13); ctx.lineTo(-8,0); ctx.lineTo(-16,13);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = gold ? '#fff' : '#fff';
+    ctx.beginPath(); ctx.arc(4,0,4,0,7); ctx.fill();
+    // エンジン炎
+    ctx.fillStyle = `hsl(${Math.random()*60},100%,60%)`;
+    ctx.shadowColor = '#f80'; ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.moveTo(-16,0); ctx.lineTo(-30-Math.random()*15, -5); ctx.lineTo(-30-Math.random()*15, 5);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function draw(){
+  ctx.save();
+  if(shake > 0.5) ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+
+  // 背景
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0a0018'); g.addColorStop(0.5,'#12002a'); g.addColorStop(1,'#000518');
+  ctx.fillStyle = g; ctx.fillRect(-20,-20,W+40,H+40);
+  for(const p of planets){
+    ctx.globalAlpha = 0.25;
+    ctx.shadowColor = p.c; ctx.shadowBlur = 60;
+    ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  }
+  for(const s of stars){
+    ctx.globalAlpha = s.z/4;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(s.x, s.y, s.s, s.z*3);
+  }
+  ctx.globalAlpha = 1;
+  // 地面グリッド
+  ctx.strokeStyle = 'rgba(255,0,255,0.25)'; ctx.lineWidth = 1;
+  for(let i=0;i<12;i++){
+    const y = H - 40 + i*8;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+
+  // パーティクル
+  for(const p of particles){
+    ctx.globalAlpha = p.life/50;
+    ctx.shadowColor = p.col; ctx.shadowBlur = 10;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+
+  // 敵
+  for(const e of enemies){
+    ctx.save(); ctx.translate(e.x, e.y);
+    ctx.shadowColor = e.col; ctx.shadowBlur = 20;
+    ctx.fillStyle = e.col;
+    if(e.type==='drone'){
+      ctx.rotate(e.t*2);
+      ctx.fillRect(-e.r,-e.r,e.r*2,e.r*2);
+    } else if(e.type==='shooter'){
+      ctx.beginPath();
+      for(let i=0;i<6;i++){ const a=i/6*Math.PI*2; ctx[i?'lineTo':'moveTo'](Math.cos(a)*e.r, Math.sin(a)*e.r); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.fill();
+    } else {
+      ctx.rotate(e.t);
+      ctx.beginPath();
+      for(let i=0;i<8;i++){ const a=i/8*Math.PI*2, r=i%2?e.r:e.r*0.6; ctx[i?'lineTo':'moveTo'](Math.cos(a)*r, Math.sin(a)*r); }
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 弾
+  ctx.shadowBlur = 15;
+  for(const b of bullets){
+    ctx.shadowColor = goldMode ? '#ffd700' : '#0ff';
+    ctx.fillStyle = goldMode ? '#ffd700' : '#fff';
+    ctx.fillRect(b.x-12, b.y-2, 24, 4);
+  }
+  for(const b of ebullets){
+    ctx.shadowColor = '#f0f'; ctx.fillStyle = '#ff2d78';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  // プレイヤー
+  drawShip(player.x, player.y, goldMode);
+
+  // スコアテキスト
+  for(const t of texts){
+    ctx.globalAlpha = t.life/40;
+    ctx.fillStyle = t.col; ctx.font = 'bold 18px Courier New';
+    ctx.shadowColor = t.col; ctx.shadowBlur = 10;
+    ctx.fillText(t.txt, t.x, t.y);
+  }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+
+  // HUD
+  if(state !== 'attract'){
+    ctx.font = 'bold 22px Courier New';
+    ctx.fillStyle = '#0ff'; ctx.shadowColor = '#0ff'; ctx.shadowBlur = 10;
+    ctx.fillText('SCORE ' + String(score).padStart(7,'0'), 20, 35);
+    ctx.fillStyle = '#f0f'; ctx.shadowColor = '#f0f';
+    ctx.fillText('HI ' + String(Math.max(hiScore,score)).padStart(7,'0'), 20, 62);
+    // 残機
+    ctx.shadowBlur = 0;
+    for(let i=0;i<lives;i++) drawShip(70+i*40, 90, goldMode);
+    if(goldMode){
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 16px Courier New';
+      ctx.shadowColor='#ffd700'; ctx.shadowBlur=10;
+      ctx.fillText('★ GOLDEN SHIP ★', W-200, 35);
+    }
+  }
+
+  // 画面フラッシュ
+  if(flash > 0){ ctx.fillStyle = `rgba(255,255,255,${flash})`; ctx.fillRect(-20,-20,W+40,H+40); }
+
+  // バナー
+  if(banner){
+    ctx.globalAlpha = Math.min(1, banner.t/40);
+    ctx.font = 'bold 48px Courier New'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd700'; ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 30;
+    ctx.fillText(banner.txt, W/2, H/2 - 20);
+    ctx.font = 'bold 22px Courier New'; ctx.fillStyle = '#fff';
+    ctx.fillText(banner.sub, W/2, H/2 + 20);
+    ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+  }
+
+  // タイトル (アトラクト)
+  if(state === 'attract'){
+    ctx.textAlign = 'center';
+    const pulse = 1 + Math.sin(frame*0.1)*0.05;
+    ctx.save(); ctx.translate(W/2, H/2-80); ctx.scale(pulse,pulse);
+    ctx.font = 'bold 72px Courier New';
+    ctx.fillStyle = '#f0f'; ctx.shadowColor = '#f0f'; ctx.shadowBlur = 40;
+    ctx.fillText('NEON STORM', 0, 0);
+    ctx.fillStyle = '#0ff'; ctx.shadowColor = '#0ff';
+    ctx.fillText('NEON STORM', 3, 3);
+    ctx.restore();
+    ctx.textAlign = 'left'; ctx.shadowBlur = 0;
+    ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    if(Math.floor(frame/30)%2===0) ctx.fillText('PRESS ANY KEY TO START', W/2, H/2+10);
+    ctx.font = '16px Courier New'; ctx.fillStyle = '#0ff';
+    ctx.fillText('AUTO DEMO MODE', W/2, H/2+45);
+    ctx.fillStyle = '#f0f';
+    ctx.fillText('↑↓ MOVE   SPACE FIRE', W/2, H/2+75);
+    ctx.textAlign = 'left';
+  }
+
+  // ゲームオーバー
+  if(state === 'gameover'){
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 60px Courier New';
+    ctx.fillStyle = '#ff2d78'; ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 30;
+    ctx.fillText('GAME OVER', W/2, H/2-20);
+    ctx.font = 'bold 24px Courier New'; ctx.fillStyle = '#fff';
+    ctx.fillText('SCORE ' + score, W/2, H/2+20);
+    if(goTimer > 60 && Math.floor(frame/30)%2===0){
+      ctx.font = '18px Courier New'; ctx.fillStyle = '#0ff';
+      ctx.fillText('PRESS ANY KEY', W/2, H/2+55);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  ctx.restore();
+}
+
+// ============ ループ ============
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
