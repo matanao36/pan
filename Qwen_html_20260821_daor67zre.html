@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ULTIMATE BENCHMARK PARODY SUITE 1999-2026</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'Arial Black', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .monitor {
+    position: relative;
+    width: 95vmin;
+    height: 75vmin;
+    max-width: 1100px;
+    max-height: 850px;
+    background: #000;
+    border: 8px solid #111;
+    border-radius: 12px;
+    box-shadow:
+      0 0 80px rgba(255,100,0,0.3),
+      0 0 120px rgba(0,150,255,0.2),
+      inset 0 0 60px rgba(0,0,0,0.8);
+    overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .title-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    opacity: 0;
+    transition: opacity 0.5s;
+    z-index: 10;
+  }
+  .title-card.show { opacity: 1; }
+  .title-card h1 {
+    font-size: 64px;
+    background: linear-gradient(180deg, #ff0, #f80, #f00);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 40px rgba(255,150,0,0.8);
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+    animation: glow 1s ease-in-out infinite alternate;
+  }
+  @keyframes glow {
+    from { filter: drop-shadow(0 0 20px #f80); }
+    to { filter: drop-shadow(0 0 40px #ff0); }
+  }
+  .title-card .sub {
+    font-size: 20px;
+    color: #0ff;
+    letter-spacing: 3px;
+    margin-bottom: 40px;
+  }
+  .title-card .year {
+    font-size: 14px;
+    color: #888;
+    letter-spacing: 2px;
+  }
+  .hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #0f0;
+    text-shadow: 0 0 4px #0f0;
+  }
+  .hud-top {
+    position: absolute;
+    top: 10px; left: 15px; right: 15px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #0a0;
+    padding-bottom: 5px;
+  }
+  .hud-bottom {
+    position: absolute;
+    bottom: 10px; left: 15px; right: 15px;
+    border-top: 1px solid #0a0;
+    padding-top: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .benchmark-name {
+    position: absolute;
+    top: 40px; left: 15px;
+    font-size: 18px;
+    color: #ff0;
+    text-shadow: 0 0 10px #ff0, 0 0 20px #f80;
+    letter-spacing: 2px;
+    font-weight: bold;
+  }
+  .score-panel {
+    position: absolute;
+    top: 40px; right: 15px;
+    text-align: right;
+    font-size: 14px;
+    color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+  }
+  .score-panel .big {
+    font-size: 28px;
+    color: #fff;
+    text-shadow: 0 0 12px #0ff, 0 0 20px #08f;
+    font-weight: bold;
+  }
+  .progress-bar {
+    width: 240px;
+    height: 10px;
+    background: #020;
+    border: 1px solid #0a0;
+    overflow: hidden;
+    box-shadow: 0 0 8px #0f0;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0f0, #ff0, #f80);
+    box-shadow: 0 0 10px #ff0;
+    transition: width 0.1s linear;
+  }
+  .temp-gauge {
+    position: absolute;
+    bottom: 40px; right: 15px;
+    font-size: 12px;
+    color: #f80;
+    text-shadow: 0 0 6px #f80;
+  }
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.2) 3px,
+      rgba(0,0,0,0.2) 4px
+    );
+    pointer-events: none;
+    mix-blend-mode: multiply;
+  }
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+  }
+  .blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .result-screen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #000, #111, #000);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.8s;
+    z-index: 20;
+  }
+  .result-screen.show { opacity: 1; }
+  .result-screen h2 {
+    font-size: 48px;
+    color: #ff0;
+    text-shadow: 0 0 30px #f80;
+    margin-bottom: 30px;
+    letter-spacing: 6px;
+  }
+  .result-score {
+    font-size: 96px;
+    color: #fff;
+    text-shadow: 0 0 40px #0ff, 0 0 60px #08f;
+    font-weight: bold;
+    margin-bottom: 20px;
+  }
+  .result-rank {
+    font-size: 72px;
+    background: linear-gradient(180deg, #ff0, #f80);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 40px;
+  }
+  .result-details {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: #0f0;
+    text-align: left;
+    line-height: 1.8;
+    border: 1px solid #0a0;
+    padding: 20px;
+    background: rgba(0,30,0,0.5);
+    box-shadow: 0 0 20px rgba(0,255,0,0.3);
+  }
+</style>
+</head>
+<body>
+<div class="monitor">
+  <canvas id="cv" width="960" height="720"></canvas>
+  <div class="overlay">
+    <div class="title-card" id="titleCard">
+      <div class="year" id="titleYear">1999</div>
+      <h1 id="titleName">3D-MARK '99</h1>
+      <div class="sub" id="titleSub">NOW RUNNING BENCHMARK...</div>
+    </div>
+    <div class="result-screen" id="resultScreen">
+      <h2>BENCHMARK COMPLETE</h2>
+      <div class="result-score" id="finalScore">00000</div>
+      <div class="result-rank" id="finalRank">S</div>
+      <div class="result-details" id="resultDetails">
+        CPU: Pentium III 500MHz @ 100%<br>
+        GPU: Voodoo3 3000 @ 85°C<br>
+        RAM: 128MB SDRAM<br>
+        STORAGE: 10GB HDD 5400RPM
+      </div>
+    </div>
+  </div>
+  <div class="hud">
+    <div class="hud-top">
+      <div>■ ULTIMATE BENCHMARK PARODY SUITE v2026.08</div>
+      <div>FPS: <span id="fps">--</span> | GPU: <span id="gpu">--</span>% | VRAM: <span id="vram">--</span>MB</div>
+    </div>
+    <div class="benchmark-name" id="benchName">INITIALIZING...</div>
+    <div class="score-panel">
+      <div>CURRENT SCORE</div>
+      <div class="big" id="score">0000000</div>
+      <div>RANK: <span id="rank">-</span></div>
+    </div>
+    <div class="hud-bottom">
+      <div>TEST <span id="testNum">01</span>/<span id="testTotal">09</span> <span class="blink">█</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+      <div>AUTO-DEMO MODE</div>
+    </div>
+    <div class="temp-gauge">
+      GPU TEMP: <span id="temp">42</span>°C <span id="tempWarn"></span>
+    </div>
+  </div>
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const TAU = Math.PI * 2;
+
+// ========== Utility ==========
+function noise2(x, y) {
+  const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+function smoothNoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const a = noise2(xi, yi);
+  const b = noise2(xi + 1, yi);
+  const c = noise2(xi, yi + 1);
+  const d = noise2(xi + 1, yi + 1);
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  return a*(1-u)*(1-v) + b*u*(1-v) + c*(1-u)*v + d*u*v;
+}
+function fbm(x, y) {
+  let v = 0, a = 0.5, f = 1;
+  for (let i = 0; i < 4; i++) {
+    v += a * smoothNoise(x * f, y * f);
+    f *= 2; a *= 0.5;
+  }
+  return v;
+}
+
+// ========== Benchmarks ==========
+const benchmarks = [
+  // 1. 3D-MARK '99 - Low-poly jungle
+  {
+    name: "3D-MARK '99",
+    year: 1999,
+    sub: "GAME PERFORMANCE TEST",
+    init() { this.t = 0; this.camX = 0; },
+    render(t) {
+      this.t += 0.02;
+      this.camX += 0.03;
+      // Sky gradient
+      const sky = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+      sky.addColorStop(0, '#4488ff');
+      sky.addColorStop(1, '#88ccff');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H * 0.5);
+      // Sun
+      ctx.fillStyle = '#ff0';
+      ctx.beginPath();
+      ctx.arc(W * 0.8, H * 0.2, 40, 0, TAU);
+      ctx.fill();
+      // Ground
+      ctx.fillStyle = '#228822';
+      ctx.fillRect(0, H * 0.5, W, H * 0.5);
+      // Low-poly trees
+      for (let i = 0; i < 15; i++) {
+        const tx = ((i * 137 + this.camX * 50) % (W + 200)) - 100;
+        const ty = H * 0.5 + (i % 5) * 30 + 20;
+        const sz = 40 + (i % 3) * 10;
+        // Trunk
+        ctx.fillStyle = '#663300';
+        ctx.fillRect(tx - 5, ty - sz, 10, sz);
+        // Leaves (triangles)
+        ctx.fillStyle = '#006600';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - sz - 30);
+        ctx.lineTo(tx - 25, ty - sz + 10);
+        ctx.lineTo(tx + 25, ty - sz + 10);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Low-poly character walking
+      const cx = W * 0.3;
+      const cy = H * 0.7;
+      const bob = Math.sin(this.t * 8) * 5;
+      // Body (box)
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(cx - 15, cy - 40 + bob, 30, 30);
+      // Head (box)
+      ctx.fillStyle = '#ffcc99';
+      ctx.fillRect(cx - 10, cy - 55 + bob, 20, 20);
+      // Legs (animated)
+      ctx.fillStyle = '#0000ff';
+      const legPhase = Math.sin(this.t * 8);
+      ctx.fillRect(cx - 12, cy - 10 + bob, 8, 20 + legPhase * 3);
+      ctx.fillRect(cx + 4, cy - 10 + bob, 8, 20 - legPhase * 3);
+      // Arms
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(cx - 20, cy - 35 + bob, 6, 20 - legPhase * 2);
+      ctx.fillRect(cx + 14, cy - 35 + bob, 6, 20 + legPhase * 2);
+      // 90s style text
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText('POLYGON COUNT: 1,247', 20, H - 30);
+      ctx.fillText('TEXTURE FILTER: NEAREST', 20, H - 10);
+    }
+  },
+  // 2. FurBARK - Furry torus
+  {
+    name: "FurBARK v3.0",
+    year: 2009,
+    sub: "GPU STRESS TEST",
+    init() { this.t = 0; this.temp = 45; },
+    render(t) {
+      this.t += 0.03;
+      this.temp = Math.min(98, this.temp + 0.1);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2;
+      const R = 150, r = 60;
+      // Draw furry torus
+      for (let i = 0; i < 800; i++) {
+        const u = (i / 800) * TAU + this.t;
+        const v = Math.sin(i * 0.1 + this.t * 2) * TAU;
+        const x = (R + r * Math.cos(v)) * Math.cos(u);
+        const y = (R + r * Math.cos(v)) * Math.sin(u);
+        const z = r * Math.sin(v);
+        const scale = 300 / (300 + z);
+        const sx = cx + x * scale;
+        const sy = cy + y * scale;
+        // Fur strand
+        const furLen = 15 + Math.sin(i + this.t * 5) * 5;
+        const angle = Math.atan2(y, x) + Math.sin(i * 0.3 + this.t) * 0.3;
+        const ex = sx + Math.cos(angle) * furLen * scale;
+        const ey = sy + Math.sin(angle) * furLen * scale;
+        ctx.strokeStyle = `hsl(${(i + this.t * 50) % 360}, 80%, 50%)`;
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      // Temperature warning
+      if (this.temp > 80) {
+        ctx.fillStyle = `rgba(255,0,0,${0.3 + Math.sin(this.t * 10) * 0.2})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      document.getElementById('temp').textContent = Math.floor(this.temp);
+      document.getElementById('tempWarn').textContent = this.temp > 85 ? '⚠️ CRITICAL!' : '';
+    }
+  },
+  // 3. CRYOSIS - Heavy jungle
+  {
+    name: "CRYOSIS",
+    year: 2007,
+    sub: "CAN YOUR PC RUN IT?",
+    init() { this.t = 0; },
+    render(t) {
+      this.t += 0.01;
+      // Dense jungle background
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#001100');
+      bg.addColorStop(0.5, '#003300');
+      bg.addColorStop(1, '#002200');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+      // Dense vegetation
+      for (let i = 0; i < 50; i++) {
+        const x = (i * 97 + this.t * 20) % W;
+        const y = H * 0.3 + (i % 10) * 40;
+        const sz = 30 + (i % 5) * 10;
+        ctx.fillStyle = `hsl(${120 + (i % 20)}, 60%, ${20 + (i % 10)}%)`;
+        ctx.beginPath();
+        ctx.arc(x, y, sz, 0, TAU);
+        ctx.fill();
+      }
+      // Light rays
+      for (let i = 0; i < 8; i++) {
+        const rx = (i * 137 + this.t * 30) % W;
+        ctx.fillStyle = `rgba(255,255,200,${0.1 + Math.sin(this.t + i) * 0.05})`;
+        ctx.beginPath();
+        ctx.moveTo(rx, 0);
+        ctx.lineTo(rx - 30, H);
+        ctx.lineTo(rx + 30, H);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // "Can it run Crysis?" text
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 32px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('CAN YOUR PC RUN IT?', W / 2, H * 0.2);
+      ctx.font = '18px Arial';
+      ctx.fillText('MAX SETTINGS @ 1080p', W / 2, H * 0.25);
+      ctx.textAlign = 'left';
+      // FPS counter (low)
+      ctx.fillStyle = '#f00';
+      ctx.font = 'bold 24px Courier';
+      ctx.fillText(`FPS: ${Math.floor(8 + Math.sin(this.t * 5) * 3)}`, 20, H - 20);
+    }
+  },
+  // 4. Final Fanciful XIV
+  {
+    name: "Final Fanciful XIV",
+    year: 2013,
+    sub: "SHADOW OF NERD",
+    init() { this.t = 0; this.particles = []; },
+    render(t) {
+      this.t += 0.02;
+      // Dark background
+      ctx.fillStyle = '#000022';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2;
+      // Magic circle
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(this.t);
+      for (let i = 0; i < 3; i++) {
+        const r = 150 + i * 30;
+        ctx.strokeStyle = `hsla(${280 + i * 20}, 100%, 60%, ${0.5 - i * 0.1})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, TAU);
+        ctx.stroke();
+        // Runes
+        for (let j = 0; j < 12; j++) {
+          const a = (j / 12) * TAU + this.t * (i + 1);
+          const rx = Math.cos(a) * r;
+          const ry = Math.sin(a) * r;
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.font = 'bold 20px serif';
+          ctx.fillText('✦', rx - 8, ry + 8);
+        }
+      }
+      ctx.restore();
+      // Particles
+      for (let i = 0; i < 100; i++) {
+        const a = (i / 100) * TAU + this.t * 2;
+        const r = 100 + Math.sin(this.t * 3 + i) * 50;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        const sz = 2 + Math.sin(this.t * 5 + i) * 2;
+        ctx.fillStyle = `hsla(${(i * 3 + this.t * 100) % 360}, 100%, 70%, 0.8)`;
+        ctx.beginPath();
+        ctx.arc(px, py, sz, 0, TAU);
+        ctx.fill();
+      }
+      // Character silhouette
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 20, 30, 0, TAU);
+      ctx.fill();
+      ctx.fillRect(cx - 20, cy + 10, 40, 60);
+      // Staff
+      ctx.strokeStyle = '#663300';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(cx + 25, cy - 10);
+      ctx.lineTo(cx + 25, cy + 70);
+      ctx.stroke();
+      // Staff glow
+      ctx.fillStyle = `hsla(${this.t * 100 % 360}, 100%, 60%, 0.8)`;
+      ctx.beginPath();
+      ctx.arc(cx + 25, cy - 15, 10 + Math.sin(this.t * 5) * 3, 0, TAU);
+      ctx.fill();
+    }
+  },
+  // 5. SuperPozition
+  {
+    name: "SuperPozition",
+    year: 2017,
+    sub: "VR READY TEST",
+    init() { this.t = 0; },
+    render(t) {
+      this.t += 0.03;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2;
+      // Reactor core
+      const coreR = 80 + Math.sin(this.t * 2) * 10;
+      const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2);
+      grd.addColorStop(0, '#fff');
+      grd.addColorStop(0.3, '#0ff');
+      grd.addColorStop(0.6, '#08f');
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(cx, cy, coreR * 2, 0, TAU);
+      ctx.fill();
+      // Energy rings
+      for (let i = 0; i < 5; i++) {
+        const r = 100 + i * 40 + Math.sin(this.t * 3 + i) * 20;
+        ctx.strokeStyle = `hsla(${180 + i * 20}, 100%, 60%, ${0.6 - i * 0.1})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, TAU);
+        ctx.stroke();
+      }
+      // Particles exploding outward
+      for (let i = 0; i < 150; i++) {
+        const a = (i / 150) * TAU;
+        const speed = (this.t * 100 + i * 5) % 400;
+        const px = cx + Math.cos(a) * speed;
+        const py = cy + Math.sin(a) * speed;
+        const alpha = 1 - speed / 400;
+        ctx.fillStyle = `hsla(${(i * 2 + this.t * 50) % 360}, 100%, 70%, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, TAU);
+        ctx.fill();
+      }
+      // Warning text
+      ctx.fillStyle = '#f00';
+      ctx.font = 'bold 24px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠️ CONTAINMENT BREACH ⚠️', cx, H * 0.15);
+      ctx.textAlign = 'left';
+    }
+  },
+  // 6. CineWrench
+  {
+    name: "CineWrench 2024",
+    year: 2024,
+    sub: "CPU RENDER TEST",
+    init() { this.t = 0; this.progress = 0; },
+    render(t) {
+      this.t += 0.01;
+      this.progress = (this.t * 10) % 100;
+      ctx.fillStyle = '#222';
+      ctx.fillRect(0, 0, W, H);
+      // Cathedral (simple)
+      const cx = W / 2, baseY = H * 0.8;
+      // Main building
+      ctx.fillStyle = '#888';
+      ctx.fillRect(cx - 150, baseY - 200, 300, 200);
+      // Towers
+      ctx.fillStyle = '#666';
+      ctx.fillRect(cx - 180, baseY - 300, 60, 300);
+      ctx.fillRect(cx + 120, baseY - 300, 60, 300);
+      // Spires
+      ctx.fillStyle = '#444';
+      ctx.beginPath();
+      ctx.moveTo(cx - 150, baseY - 300);
+      ctx.lineTo(cx - 180, baseY - 350);
+      ctx.lineTo(cx - 120, baseY - 350);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + 150, baseY - 300);
+      ctx.lineTo(cx + 120, baseY - 350);
+      ctx.lineTo(cx + 180, baseY - 350);
+      ctx.closePath();
+      ctx.fill();
+      // Windows
+      ctx.fillStyle = '#ff0';
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(cx - 120 + i * 60, baseY - 150, 30, 50);
+      }
+      // Render progress overlay
+      const renderY = H * this.progress / 100;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, renderY);
+      // Rendered portion (brighter)
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(0, renderY, W, H - renderY);
+      // Progress bar
+      ctx.fillStyle = '#000';
+      ctx.fillRect(W * 0.2, H - 60, W * 0.6, 30);
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(W * 0.2 + 2, H - 58, (W * 0.6 - 4) * this.progress / 100, 26);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px Courier';
+      ctx.textAlign = 'center';
+      ctx.fillText(`RENDERING: ${Math.floor(this.progress)}%`, W / 2, H - 40);
+      ctx.textAlign = 'left';
+    }
+  },
+  // 7. CrystalDiskSmash
+  {
+    name: "CrystalDiskSmash",
+    year: 2020,
+    sub: "STORAGE SPEED TEST",
+    init() { this.t = 0; this.seqRead = 0; this.seqWrite = 0; },
+    render(t) {
+      this.t += 0.02;
+      this.seqRead = Math.min(7000, this.t * 500);
+      this.seqWrite = Math.min(5000, this.t * 400);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, W, H);
+      // Title
+      ctx.fillStyle = '#0af';
+      ctx.font = 'bold 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('CrystalDiskSmash', W / 2, 80);
+      ctx.textAlign = 'left';
+      // Results
+      const y0 = 150;
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Courier';
+      ctx.fillText('SEQUENTIAL READ:', 100, y0);
+      ctx.fillText(`${Math.floor(this.seqRead)} MB/s`, 400, y0);
+      // Bar
+      ctx.fillStyle = '#333';
+      ctx.fillRect(100, y0 + 10, 600, 20);
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(100, y0 + 10, 600 * (this.seqRead / 7000), 20);
+      ctx.fillText('SEQUENTIAL WRITE:', 100, y0 + 80);
+      ctx.fillText(`${Math.floor(this.seqWrite)} MB/s`, 400, y0 + 80);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(100, y0 + 90, 600, 20);
+      ctx.fillStyle = '#08f';
+      ctx.fillRect(100, y0 + 90, 600 * (this.seqWrite / 5000), 20);
+      // Random tests
+      ctx.fillText('RANDOM 4K READ:', 100, y0 + 160);
+      ctx.fillText(`${Math.floor(this.t * 50)} IOPS`, 400, y0 + 160);
+      ctx.fillText('RANDOM 4K WRITE:', 100, y0 + 210);
+      ctx.fillText(`${Math.floor(this.t * 40)} IOPS`, 400, y0 + 210);
+      // Drive info
+      ctx.fillStyle = '#888';
+      ctx.font = '14px Courier';
+      ctx.fillText('Drive: Samsung 990 PRO 2TB (NVMe)', 100, H - 80);
+      ctx.fillText('Interface: PCIe 4.0 x4', 100, H - 60);
+      ctx.fillText('Temperature: 45°C', 100, H - 40);
+    }
+  },
+  // 8. Heaven's Gate
+  {
+    name: "Heaven's Gate v4.0",
+    year: 2012,
+    sub: "DIRECTX 11 TEST",
+    init() { this.t = 0; },
+    render(t) {
+      this.t += 0.015;
+      // Sky
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#ff8800');
+      sky.addColorStop(0.5, '#ffaa44');
+      sky.addColorStop(1, '#88ccff');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+      // Floating islands
+      for (let i = 0; i < 5; i++) {
+        const ix = (i * 200 + this.t * 30) % (W + 200) - 100;
+        const iy = H * 0.4 + Math.sin(this.t + i) * 30 + i * 50;
+        const iw = 100 + i * 20;
+        // Island body
+        ctx.fillStyle = '#663300';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy, iw, 30, 0, 0, TAU);
+        ctx.fill();
+        // Grass on top
+        ctx.fillStyle = '#00aa00';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy - 10, iw - 10, 20, 0, 0, Math.PI);
+        ctx.fill();
+        // Trees
+        ctx.fillStyle = '#006600';
+        ctx.beginPath();
+        ctx.arc(ix - 20, iy - 30, 15, 0, TAU);
+        ctx.arc(ix + 20, iy - 25, 18, 0, TAU);
+        ctx.fill();
+        // Waterfall
+        ctx.strokeStyle = '#4488ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(ix, iy + 20);
+        ctx.lineTo(ix, iy + 100);
+        ctx.stroke();
+      }
+      // Dragon
+      const dx = W * 0.7 + Math.sin(this.t * 2) * 100;
+      const dy = H * 0.3 + Math.cos(this.t * 1.5) * 50;
+      ctx.fillStyle = '#880000';
+      // Body
+      ctx.beginPath();
+      ctx.ellipse(dx, dy, 40, 20, 0, 0, TAU);
+      ctx.fill();
+      // Wings
+      ctx.fillStyle = '#aa0000';
+      ctx.beginPath();
+      ctx.moveTo(dx - 20, dy);
+      ctx.lineTo(dx - 60, dy - 30 + Math.sin(this.t * 8) * 10);
+      ctx.lineTo(dx - 10, dy - 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(dx + 20, dy);
+      ctx.lineTo(dx + 60, dy - 30 + Math.sin(this.t * 8) * 10);
+      ctx.lineTo(dx + 10, dy - 10);
+      ctx.closePath();
+      ctx.fill();
+      // Head
+      ctx.fillStyle = '#880000';
+      ctx.beginPath();
+      ctx.arc(dx + 35, dy, 12, 0, TAU);
+      ctx.fill();
+    }
+  },
+  // 9. RT-Mark
+  {
+    name: "RT-Mark 2026",
+    year: 2026,
+    sub: "RAY TRACING BENCHMARK",
+    init() { this.t = 0; },
+    render(t) {
+      this.t += 0.02;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2;
+      // Reflective spheres
+      for (let i = 0; i < 7; i++) {
+        const sx = cx + Math.cos(this.t + i * 0.9) * 200;
+        const sy = cy + Math.sin(this.t * 1.3 + i * 0.9) * 150;
+        const r = 40 + i * 5;
+        // Sphere with reflection
+        const grd = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, 0, sx, sy, r);
+        grd.addColorStop(0, '#fff');
+        grd.addColorStop(0.3, `hsl(${(i * 50 + this.t * 50) % 360}, 80%, 60%)`);
+        grd.addColorStop(0.7, `hsl(${(i * 50 + this.t * 50 + 180) % 360}, 80%, 40%)`);
+        grd.addColorStop(1, '#000');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, TAU);
+        ctx.fill();
+        // Reflection highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(sx - r * 0.3, sy - r * 0.3, r * 0.2, 0, TAU);
+        ctx.fill();
+      }
+      // Ray lines
+      ctx.strokeStyle = 'rgba(255,0,0,0.3)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 20; i++) {
+        const a = (i / 20) * TAU + this.t;
+        const x1 = cx + Math.cos(a) * 50;
+        const y1 = cy + Math.sin(a) * 50;
+        const x2 = cx + Math.cos(a) * 400;
+        const y2 = cy + Math.sin(a) * 400;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      // RT label
+      ctx.fillStyle = '#0ff';
+      ctx.font = 'bold 28px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('RAY TRACING: ON', cx, 60);
+      ctx.font = '16px Courier';
+      ctx.fillText(`RT CORES: ${Math.floor(80 + Math.sin(this.t) * 10)}%`, cx, 90);
+      ctx.textAlign = 'left';
+    }
+  }
+];
+
+// ========== Demo Controller ==========
+let currentBench = 0;
+let benchStart = 0;
+const BENCH_DURATION = 8000;
+const TITLE_DURATION = 2500;
+let phase = 'title'; // 'title' or 'render'
+benchmarks.forEach(b => b.init && b.init());
+document.getElementById('testTotal').textContent = String(benchmarks.length).padStart(2, '0');
+
+let lastFrame = performance.now();
+let fpsAcc = 0, fpsCount = 0, fpsDisplay = 0;
+
+function showTitle() {
+  const b = benchmarks[currentBench];
+  document.getElementById('titleYear').textContent = b.year;
+  document.getElementById('titleName').textContent = b.name;
+  document.getElementById('titleSub').textContent = b.sub;
+  document.getElementById('titleCard').classList.add('show');
+  document.getElementById('benchName').textContent = b.name;
+  document.getElementById('testNum').textContent = String(currentBench + 1).padStart(2, '0');
+}
+
+function hideTitle() {
+  document.getElementById('titleCard').classList.remove('show');
+}
+
+function showResult() {
+  const totalScore = Math.floor(Math.random() * 50000) + 30000;
+  document.getElementById('finalScore').textContent = totalScore;
+  const ranks = ['D', 'C', 'B', 'A', 'S', 'SS', 'SSS'];
+  document.getElementById('finalRank').textContent = ranks[Math.floor(Math.random() * ranks.length)];
+  document.getElementById('resultDetails').innerHTML = `
+    CPU: Intel Core i9-14900K @ 100%<br>
+    GPU: NVIDIA RTX 5090 @ 78°C<br>
+    RAM: 64GB DDR5-6400<br>
+    STORAGE: NVMe SSD 7000MB/s<br>
+    RESOLUTION: 3840x2160 (4K)<br>
+    SETTINGS: ULTRA / RT ON / DLSS 3.0
+  `;
+  document.getElementById('resultScreen').classList.add('show');
+}
+
+function hideResult() {
+  document.getElementById('resultScreen').classList.remove('show');
+}
+
+function switchBench() {
+  currentBench = (currentBench + 1) % benchmarks.length;
+  benchStart = performance.now();
+  phase = 'title';
+  benchmarks[currentBench].init && benchmarks[currentBench].init();
+  showTitle();
+}
+
+function loop(now) {
+  const dt = now - lastFrame;
+  lastFrame = now;
+  fpsAcc += dt; fpsCount++;
+  if (fpsAcc >= 500) {
+    fpsDisplay = Math.round(1000 / (fpsAcc / fpsCount));
+    fpsAcc = 0; fpsCount = 0;
+  }
+
+  const elapsed = now - benchStart;
+
+  if (phase === 'title') {
+    if (elapsed >= TITLE_DURATION) {
+      phase = 'render';
+      benchStart = now;
+      hideTitle();
+    }
+  } else {
+    benchmarks[currentBench].render(now);
+    if (elapsed >= BENCH_DURATION) {
+      if (currentBench === benchmarks.length - 1) {
+        showResult();
+        setTimeout(() => {
+          hideResult();
+          currentBench = 0;
+          switchBench();
+        }, 4000);
+        phase = 'result';
+      } else {
+        switchBench();
+      }
+    }
+  }
+
+  // HUD updates
+  document.getElementById('fps').textContent = fpsDisplay;
+  document.getElementById('gpu').textContent = Math.min(99, 60 + Math.floor(Math.random() * 30));
+  document.getElementById('vram').textContent = (8192 + Math.floor(Math.random() * 1024));
+  const prog = phase === 'render' ? Math.min(100, (elapsed / BENCH_DURATION) * 100) : 0;
+  document.getElementById('prog').style.width = prog + '%';
+  const score = Math.floor((currentBench * 123456) + (elapsed * 15));
+  document.getElementById('score').textContent = String(score).padStart(7, '0');
+  const ranks = ['F','E','D','C','B','A','S','SS','SSS'];
+  document.getElementById('rank').textContent = ranks[Math.min(ranks.length - 1, Math.floor(score / 300000))];
+
+  if (phase !== 'result') requestAnimationFrame(loop);
+  else setTimeout(() => requestAnimationFrame(loop), 100);
+}
+
+benchStart = performance.now();
+showTitle();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
