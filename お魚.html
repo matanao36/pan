@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>🐠 熱帯魚水槽</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #003d5c;
+        }
+
+        canvas {
+            display: block;
+            cursor: none;
+        }
+
+        .water-surface {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0.3) 0%,
+                rgba(100, 200, 255, 0.1) 60%,
+                transparent 100%
+            );
+            pointer-events: none;
+            animation: shimmer 3s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { opacity: 0.8; transform: translateY(0); }
+            50% { opacity: 0.5; transform: translateY(3px); }
+        }
+
+        .light-rays {
+            position: fixed;
+            top: 0;
+            left: 20%;
+            width: 60%;
+            height: 100%;
+            pointer-events: none;
+            background: 
+                radial-gradient(ellipse at 30% 0%, rgba(255,255,200,0.1) 0%, transparent 40%),
+                radial-gradient(ellipse at 70% 0%, rgba(255,255,200,0.08) 0%, transparent 35%);
+        }
+
+        .info {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            color: rgba(255, 255, 255, 0.4);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="aquarium"></canvas>
+    <div class="water-surface"></div>
+    <div class="light-rays"></div>
+    <div class="info">🐟 Tropical Fish Aquarium - 放置で楽しめます</div>
+
+    <script>
+        const canvas = document.getElementById('aquarium');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // 水槽の境界（上から少し余裕を持たせる）
+        const TANK_TOP = 80;
+        const TANK_MARGIN = 60;
+
+        class Fish {
+            constructor() {
+                this.x = Math.random() * (width - 100) + 50;
+                this.y = Math.random() * (height - TANK_TOP - 100) + TANK_TOP + 50;
+                this.size = Math.random() * 20 + 15;
+                this.speed = Math.random() * 1.5 + 1;
+                this.angle = Math.random() * Math.PI * 2;
+                this.turnSpeed = (Math.random() - 0.5) * 0.03;
+                this.wigglePhase = Math.random() * Math.PI * 2;
+                this.wiggleSpeed = Math.random() * 0.1 + 0.05;
+
+                // 熱帯魚の配色パレット
+                const palettes = [
+                    ['#FF6B35', '#F7C59F', '#FFE4D6'],  // オレンジ系
+                    ['#E63946', '#FFB4A2', '#FF8FA3'],  // ピンク/赤系
+                    ['#06D6A0', '#95E1D3', '#CAF0F8'],  // メンタルグリーン
+                    ['#FFD60A', '#FFC971', '#FFFBE6'],  // イエロー系
+                    ['#4ECDC4', '#A8E6CF', '#E8FBEE'],  // テールブルー
+                    ['#C77DFF', '#E2B3FF', '#F3DFFF'],  // パープル系
+                    ['#FF006E', '#FB5607', '#FFBE08'],  // レインボー風
+                    ['#0EA5E9', '#7DD3FC', '#BAE6FD']   // ブルー系
+                ];
+
+                this.colors = palettes[Math.floor(Math.random() * palettes.length)];
+                
+                // 運動状態
+                this.stateTimer = 0;
+                this.stateDuration = Math.random() * 200 + 100;
+                this.targetSpeed = this.speed;
+            }
+
+            update() {
+                // 角度をゆっくり変化させる
+                this.angle += this.turnSpeed;
+                
+                // ランダムに方向を変える
+                if (Math.random() < 0.02) {
+                    this.turnSpeed = (Math.random() - 0.5) * 0.04;
+                }
+
+                // 速度変化
+                this.stateTimer++;
+                if (this.stateTimer > this.stateDuration) {
+                    this.targetSpeed = Math.random() * 2 + 0.8;
+                    this.stateDuration = Math.random() * 300 + 150;
+                    this.stateTimer = 0;
+                }
+
+                // スピードをスムーズに変化
+                this.speed += (this.targetSpeed - this.speed) * 0.02;
+
+                // 移動
+                const dx = Math.cos(this.angle) * this.speed;
+                const dy = Math.sin(this.angle) * this.speed;
+                
+                let newX = this.x + dx;
+                let newY = this.y + dy;
+
+                // 水槽の壁に近づくと反転するよう角度調整
+                const wallDistance = 150;
+                if (newX < TANK_MARGIN + wallDistance) {
+                    this.turnSpeed += 0.003;
+                    this.angle = Math.atan2(this.y - newY, this.x - newX) * 0.3 + this.angle * 0.7;
+                }
+                if (newX > width - TANK_MARGIN - wallDistance) {
+                    this.turnSpeed -= 0.003;
+                    this.angle = Math.atan2(this.y - newY, this.x - newX) * 0.3 + this.angle * 0.7;
+                }
+                if (newY < TANK_TOP + wallDistance) {
+                    this.turnSpeed += 0.002;
+                }
+                if (newY > height - TANK_MARGIN - wallDistance) {
+                    this.turnSpeed -= 0.002;
+                }
+
+                // 範囲制限（強制的）
+                newX = Math.max(TANK_MARGIN, Math.min(width - TANK_MARGIN, newX));
+                newY = Math.max(TANK_TOP, Math.min(height - TANK_MARGIN, newY));
+
+                this.x = newX;
+                this.y = newY;
+
+                // ウィグルアニメーション
+                this.wigglePhase += this.wiggleSpeed * (this.speed + 0.5);
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // 移動方向に回転（横を向くように調整）
+                let displayAngle = Math.atan2(Math.sin(this.angle), Math.cos(this.angle));
+                ctx.rotate(displayAngle + Math.PI / 2);
+
+                const wiggle = Math.sin(this.wigglePhase) * this.size * 0.15;
+                
+                // 尾びれ
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size * 0.8);
+                ctx.quadraticCurveTo(
+                    wiggle + this.size * 0.4, 
+                    -this.size * 1.2, 
+                    wiggle, 
+                    -this.size * 1.6
+                );
+                ctx.quadraticCurveTo(
+                    wiggle - this.size * 0.3, 
+                    -this.size * 1.2, 
+                    -this.size * 0.15, 
+                    -this.size * 0.8
+                );
+                ctx.closePath();
+                ctx.fillStyle = this.colors[0];
+                ctx.globalAlpha = 0.7;
+                ctx.fill();
+
+                // 本体（楕円形）
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.size * 0.45, this.size, 0, 0, Math.PI * 2);
+                const bodyGrad = ctx.createLinearGradient(-this.size*0.5, 0, this.size*0.5, 0);
+                bodyGrad.addColorStop(0, this.colors[1]);
+                bodyGrad.addColorStop(0.5, this.colors[0]);
+                bodyGrad.addColorStop(1, this.colors[2]);
+                ctx.fillStyle = bodyGrad;
+                ctx.globalAlpha = 0.9;
+                ctx.fill();
+
+                // 側面の模様（帯）
+                ctx.beginPath();
+                ctx.ellipse(this.size * 0.15, -this.size * 0.3, this.size * 0.3, this.size * 0.25, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                ctx.fill();
+
+                // 胸びれ（左右）
+                ctx.beginPath();
+                ctx.moveTo(-this.size * 0.4, this.size * 0.1);
+                ctx.quadraticCurveTo(
+                    -this.size * 0.8 + wiggle * 0.5, 
+                    this.size * 0.3, 
+                    -this.size * 0.6, 
+                    this.size * 0.5
+                );
+                ctx.fillStyle = this.colors[1];
+                ctx.globalAlpha = 0.5;
+                ctx.fill();
+
+                // 目
+                const eyeX = Math.cos(displayAngle + Math.PI/2) > 0 ? 1 : -1;
+                
+                ctx.beginPath();
+                ctx.arc(this.size * 0.2, this.size * 0.35, this.size * 0.12, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.globalAlpha = 0.9;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(this.size * 0.2 + eyeX * 1, this.size * 0.35, this.size * 0.06, 0, Math.PI * 2);
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Bubble {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * height; // 最初のみランダム位置
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = height + 10;
+                this.size = Math.random() * 4 + 2;
+                this.speedY = Math.random() * 1 + 0.5;
+                this.wobblePhase = Math.random() * Math.PI * 2;
+                this.alpha = Math.random() * 0.3 + 0.2;
+            }
+
+            update() {
+                this.y -= this.speedY;
+                this.wobblePhase += 0.05;
+                this.x += Math.sin(this.wobblePhase) * 0.5;
+
+                if (this.y < TANK_TOP - 10) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                ctx.fill();
+                
+                // ハイライト
+                ctx.beginPath();
+                ctx.arc(this.x - this.size*0.3, this.y - this.size*0.3, this.size*0.3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha * 1.5})`;
+                ctx.fill();
+            }
+        }
+
+        class Plant {
+            constructor(x) {
+                this.x = x;
+                this.height = Math.random() * 100 + 80;
+                this.segments = Math.floor(Math.random() * 4) + 5;
+                this.phase = Math.random() * Math.PI * 2;
+                this.hue = Math.random() * 60 + 100; // グリーン系
+            }
+
+            draw(ctx, time) {
+                const baseY = height - TANK_MARGIN / 2;
+                
+                for (let strand = -1; strand <= 1; strand++) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + strand * 5, baseY);
+                    
+                    let prevX = this.x + strand * 5;
+                    let prevY = baseY;
+
+                    for (let i = 1; i <= this.segments; i++) {
+                        const t = i / this.segments;
+                        const sway = Math.sin(time * 0.002 + this.phase + i) * 8 * t;
+                        const x = prevX + strand * 3 + sway;
+                        const y = prevY - (this.height / this.segments);
+
+                        ctx.lineTo(x, y);
+                        
+                        // 葉の形を表現
+                        if (i % 2 === 0) {
+                            ctx.quadraticCurveTo(
+                                x + 15 * Math.sign(strand || 1), 
+                                y - this.height / this.segments / 3, 
+                                x, 
+                                y - this.height / this.segments / 4
+                            );
+                        }
+
+                        prevX = x;
+                        prevY = y;
+                    }
+
+                    ctx.strokeStyle = `hsla(${this.hue}, 60%, 45%, 0.7)`;
+                    ctx.lineWidth = 3 - Math.abs(strand);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 初期化
+        const fishCount = Math.min(8, Math.floor(width / 200));
+        const fishes = Array.from({ length: fishCount }, () => new Fish());
+        const bubbles = Array.from({ length: 15 }, () => new Bubble());
+        
+        const plantPositions = [];
+        for (let i = 0; i < Math.floor(width / 250); i++) {
+            plantPositions.push(Math.random() * (width - 200) + 100);
+        }
+        const plants = plantPositions.map(x => new Plant(x));
+
+        // 砂利を描画
+        function drawGravel(ctx) {
+            const gravelY = height - TANK_MARGIN / 2;
+            
+            // 砂の層
+            const grad = ctx.createLinearGradient(0, gravelY, 0, height);
+            grad.addColorStop(0, '#D4A574');
+            grad.addColorStop(1, '#8B6914');
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, gravelY, width, TANK_MARGIN / 2 + 20);
+
+            // 砂粒
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * width;
+                const y = gravelY + Math.random() * 20;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.random() * 3 + 1, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(180, 140, 90, ${Math.random() * 0.5})`;
+                ctx.fill();
+            }
+
+            // 石
+            for (let i = 0; i < 5; i++) {
+                const x = Math.random() * width;
+                const y = gravelY + Math.random() * 10;
+                const r = Math.random() * 8 + 4;
+                
+                ctx.beginPath();
+                ctx.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(120, 100, 80, 0.7)`;
+                ctx.fill();
+            }
+        }
+
+        // メインループ
+        function animate(time) {
+            // 水のグラデーション背景
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+            bgGrad.addColorStop(0, '#1a5f7a');
+            bgGrad.addColorStop(0.3, '#2980b9');
+            bgGrad.addColorStop(1, '#1a4d6e');
+            
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            // 水草を描画
+            plants.forEach(plant => plant.draw(ctx, time));
+
+            // 砂利
+            drawGravel(ctx);
+
+            // 気泡
+            bubbles.forEach(bubble => {
+                bubble.update();
+                bubble.draw(ctx);
+            });
+
+            // 魚を描画（遠くのものから）
+            fishes.sort((a, b) => a.size - b.size);
+            fishes.forEach(fish => {
+                fish.update();
+                fish.draw(ctx);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate(0);
+
+        // ウィンドウサイズ変更時に魚の位置調整
+        window.addEventListener('resize', () => {
+            fishes.forEach(fish => {
+                fish.x = Math.max(TANK_MARGIN, Math.min(width - TANK_MARGIN, fish.x));
+                fish.y = Math.max(TANK_TOP, Math.min(height - TANK_MARGIN, fish.y));
+            });
+        });
+    </script>
+</body>
+</html>
