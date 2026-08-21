@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大洋の生態系 — Grand Aquarium</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000814;
+    font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  .info {
+    position: fixed;
+    bottom: 20px;
+    left: 24px;
+    color: rgba(200, 230, 255, 0.45);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    pointer-events: none;
+    z-index: 10;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8);
+  }
+  .title {
+    position: fixed;
+    top: 20px;
+    left: 24px;
+    color: rgba(220, 240, 255, 0.35);
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    pointer-events: none;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="title">GRAND AQUARIUM — 大洋の王国</div>
+<div class="info">WHALE · SHARK · MANTA · SCHOOL · JELLYFISH</div>
+<canvas id="sea"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('sea');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randi = (a, b) => Math.floor(rand(a, b));
+  const TAU = Math.PI * 2;
+  const DEPTH = 1200;
+
+  function project(x, y, z) {
+    const scale = DEPTH / (DEPTH + z);
+    return {
+      x: W / 2 + (x - W / 2) * scale,
+      y: H / 2 + (y - H / 2) * scale,
+      scale: scale
+    };
+  }
+
+  // ========= 背景 =========
+  function drawBackground(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0.00, '#0d4a7a');
+    g.addColorStop(0.25, '#0a4c7a');
+    g.addColorStop(0.55, '#07355e');
+    g.addColorStop(0.85, '#041e3a');
+    g.addColorStop(1.00, '#010814');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ========= ゴッドレイ =========
+  const rays = [];
+  for (let i = 0; i < 10; i++) {
+    rays.push({
+      x: Math.random(),
+      w: rand(0.04, 0.13),
+      speed: rand(0.00005, 0.0002),
+      phase: Math.random() * TAU,
+      alpha: rand(0.04, 0.11),
+      z: rand(0, DEPTH * 0.5)
+    });
+  }
+  function drawRays(t) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const r of rays) {
+      const cx = ((r.x + Math.sin(t * r.speed + r.phase) * 0.05) % 1) * W;
+      const w = r.w * W;
+      const depthFade = 1 - r.z / DEPTH;
+      const grad = ctx.createLinearGradient(cx - w, 0, cx + w, 0);
+      grad.addColorStop(0, 'rgba(180,220,255,0)');
+      grad.addColorStop(0.5, `rgba(200,235,255,${r.alpha * depthFade})`);
+      grad.addColorStop(1, 'rgba(180,220,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(cx - w * 0.3, 0);
+      ctx.lineTo(cx + w * 0.3, 0);
+      ctx.lineTo(cx + w * 1.5, H);
+      ctx.lineTo(cx - w * 1.5, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ========= 砂浜 =========
+  function drawSand(t) {
+    const baseY = H - 60;
+    ctx.save();
+    const g = ctx.createLinearGradient(0, baseY - 30, 0, H);
+    g.addColorStop(0, '#3a2f1e');
+    g.addColorStop(0.5, '#5a4a2e');
+    g.addColorStop(1, '#2a1f10');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 10) {
+      const y = baseY + Math.sin(x * 0.01 + t * 0.0003) * 6 + Math.sin(x * 0.03) * 3;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ========= 水草 =========
+  class Seaweed {
+    constructor() {
+      this.x = rand(0, W);
+      this.y = H - 55 + Math.random() * 10;
+      this.z = rand(0, DEPTH);
+      this.segments = randi(8, 14);
+      this.segLen = rand(12, 20);
+      this.hue = randi(90, 150);
+      this.phase = Math.random() * TAU;
+      this.speed = rand(0.0008, 0.0018);
+      this.width = rand(6, 12);
+    }
+    draw(t) {
+      const p = project(this.x, this.y, this.z);
+      let x = p.x, y = p.y;
+      const scale = p.scale;
+      ctx.save();
+      for (let i = 0; i < this.segments; i++) {
+        const sway = Math.sin(t * this.speed + this.phase + i * 0.4) * (i * 1.2 * scale);
+        const nx = x + sway;
+        const ny = y - this.segLen * scale;
+        const w = this.width * scale * (1 - i / this.segments * 0.6);
+        const alpha = (0.55 + (i / this.segments) * 0.3) * scale;
+        ctx.strokeStyle = `hsla(${this.hue}, 55%, ${25 + i}%, ${alpha})`;
+        ctx.lineWidth = w;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+        x = nx; y = ny;
+      }
+      ctx.restore();
+    }
+  }
+  const seaweeds = [];
+  for (let i = 0; i < 22; i++) seaweeds.push(new Seaweed());
+
+  // ========= 気泡 =========
+  class Bubble {
+    constructor() { this.reset(true); }
+    reset(init) {
+      this.x = rand(0, W);
+      this.y = init ? rand(0, H) : H + rand(0, 50);
+      this.z = rand(0, DEPTH);
+      this.r = rand(1.5, 6);
+      this.vy = rand(0.4, 1.2);
+      this.phase = Math.random() * TAU;
+      this.freq = rand(0.001, 0.003);
+      this.amp = rand(0.3, 1.2);
+    }
+    update(t) {
+      this.y -= this.vy;
+      this.x += Math.sin(t * this.freq + this.phase) * this.amp;
+      if (this.y < -10) this.reset(false);
+    }
+    draw() {
+      const p = project(this.x, this.y, this.z);
+      const r = this.r * p.scale;
+      ctx.save();
+      ctx.globalAlpha = p.scale;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, TAU);
+      const g = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, 0, p.x, p.y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.9)');
+      g.addColorStop(0.4, 'rgba(200,230,255,0.3)');
+      g.addColorStop(1, 'rgba(150,200,255,0.05)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  const bubbles = [];
+  for (let i = 0; i < 50; i++) bubbles.push(new Bubble());
+
+  // ========= 小魚 =========
+  class Fish {
+    constructor(isPredator = false) {
+      this.x = rand(0, W);
+      this.y = rand(50, H - 100);
+      this.z = rand(0, DEPTH);
+      this.vx = rand(0.5, 1.5) * (Math.random() < 0.5 ? -1 : 1);
+      this.vy = rand(-0.3, 0.3);
+      this.vz = rand(-0.2, 0.2);
+      this.size = isPredator ? rand(35, 55) : rand(18, 38);
+      this.isPredator = isPredator;
+      this.hue = isPredator ? randi(0, 30) : randi(0, 360);
+      this.sat = randi(60, 90);
+      this.light = randi(50, 65);
+      this.stripe = !isPredator && Math.random() < 0.6;
+      this.tailPhase = Math.random() * TAU;
+      this.tailSpeed = rand(0.008, 0.015);
+      this.target = null;
+      this.fleeing = false;
+      this.eaten = false;
+    }
+    findPrey(fishes) {
+      if (!this.isPredator) return;
+      let closest = null, minDist = Infinity;
+      for (const f of fishes) {
+        if (f === this || f.isPredator || f.size >= this.size * 0.7 || f.eaten) continue;
+        const dx = f.x - this.x, dy = f.y - this.y, dz = f.z - this.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < minDist && dist < 300) { minDist = dist; closest = f; }
+      }
+      this.target = closest;
+    }
+    fleeFrom(largeCreatures) {
+      let closest = null, minDist = Infinity;
+      for (const p of largeCreatures) {
+        const dx = p.x - this.x, dy = p.y - this.y, dz = p.z - this.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        const range = p.fearRange || 250;
+        if (dist < minDist && dist < range) { minDist = dist; closest = p; }
+      }
+      if (closest) {
+        this.fleeing = true;
+        const dx = this.x - closest.x, dy = this.y - closest.y, dz = this.z - closest.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+        const power = closest.fearPower || 0.3;
+        this.vx += (dx / dist) * power;
+        this.vy += (dy / dist) * power;
+        this.vz += (dz / dist) * power;
+      } else {
+        this.fleeing = false;
+      }
+    }
+    update(t, fishes, predators, largeCreatures) {
+      if (this.eaten) return;
+      this.findPrey(fishes);
+      this.fleeFrom(largeCreatures);
+      if (this.target && this.isPredator) {
+        const dx = this.target.x - this.x, dy = this.target.y - this.y, dz = this.target.z - this.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < 30) { this.target.eaten = true; this.target = null; }
+        else { this.vx += (dx/dist)*0.08; this.vy += (dy/dist)*0.08; this.vz += (dz/dist)*0.08; }
+      }
+      const maxSpeed = this.fleeing ? 3.5 : (this.isPredator ? 2.0 : 1.8);
+      const sp = Math.sqrt(this.vx*this.vx + this.vy*this.vy + this.vz*this.vz);
+      if (sp > maxSpeed) { this.vx=(this.vx/sp)*maxSpeed; this.vy=(this.vy/sp)*maxSpeed; this.vz=(this.vz/sp)*maxSpeed; }
+      this.vy += Math.sin(t * 0.001 + this.x * 0.01) * 0.003;
+      this.vy *= 0.98; this.vz *= 0.98;
+      this.x += this.vx; this.y += this.vy; this.z += this.vz;
+      const margin = 80;
+      if (this.x < -margin) this.vx = Math.abs(this.vx);
+      if (this.x > W + margin) this.vx = -Math.abs(this.vx);
+      if (this.y < 40) this.vy = Math.abs(this.vy) * 0.5;
+      if (this.y > H - 120) this.vy = -Math.abs(this.vy) * 0.5;
+      if (this.z < 0) this.vz = Math.abs(this.vz);
+      if (this.z > DEPTH) this.vz = -Math.abs(this.vz);
+    }
+    draw(t) {
+      if (this.eaten) return;
+      const p = project(this.x, this.y, this.z);
+      const dir = this.vx >= 0 ? 1 : -1;
+      const tailSwing = Math.sin(t * this.tailSpeed + this.tailPhase) * 0.5;
+      const s = this.size * p.scale;
+      ctx.save();
+      ctx.globalAlpha = p.scale;
+      ctx.translate(p.x, p.y);
+      ctx.scale(dir * p.scale, p.scale);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(0, s * 0.4, s * 0.6, s * 0.1, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = `hsla(${this.hue}, ${this.sat}%, ${this.light - 10}%, 0.85)`;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.6, 0);
+      ctx.quadraticCurveTo(-s * 1.0, -s * 0.5 + tailSwing * s * 0.3, -s * 1.3, -s * 0.4 + tailSwing * s * 0.5);
+      ctx.quadraticCurveTo(-s * 1.1, tailSwing * s * 0.2, -s * 1.3, s * 0.4 + tailSwing * s * 0.5);
+      ctx.quadraticCurveTo(-s * 1.0, s * 0.5 + tailSwing * s * 0.3, -s * 0.6, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.2, -s * 0.3);
+      ctx.quadraticCurveTo(0, -s * 0.7, s * 0.2, -s * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${this.hue}, ${this.sat}%, ${this.light - 5}%, 0.8)`;
+      ctx.fill();
+      const bodyGrad = ctx.createLinearGradient(0, -s * 0.4, 0, s * 0.4);
+      bodyGrad.addColorStop(0, `hsl(${this.hue}, ${this.sat}%, ${this.light + 10}%)`);
+      bodyGrad.addColorStop(0.5, `hsl(${this.hue}, ${this.sat}%, ${this.light}%)`);
+      bodyGrad.addColorStop(1, `hsl(${this.hue}, ${this.sat}%, ${this.light - 15}%)`);
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.7, s * 0.35, 0, 0, TAU);
+      ctx.fill();
+      if (this.stripe) {
+        ctx.strokeStyle = `hsla(${(this.hue + 40) % 360}, 80%, 85%, 0.6)`;
+        ctx.lineWidth = s * 0.06;
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * s * 0.25, -s * 0.3);
+          ctx.lineTo(i * s * 0.25, s * 0.3);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(-s * 0.1, -s * 0.18, s * 0.35, s * 0.08, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s * 0.4, -s * 0.05, s * 0.08, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = this.isPredator ? '#ff0000' : '#000';
+      ctx.beginPath();
+      ctx.arc(s * 0.42, -s * 0.05, s * 0.04, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  const fishes = [];
+  const predators = [];
+  for (let i = 0; i < 10; i++) fishes.push(new Fish(false));
+  for (let i = 0; i < 3; i++) { const p = new Fish(true); predators.push(p); fishes.push(p); }
+
+  // ========= 群れ =========
+  class SchoolFish {
+    constructor() {
+      this.x = rand(0, W);
+      this.y = rand(60, H - 150);
+      this.z = rand(0, DEPTH);
+      this.vx = rand(-0.5, 0.5);
+      this.vy = rand(-0.5, 0.5);
+      this.vz = rand(-0.3, 0.3);
+      this.size = rand(4, 7);
+      this.hue = randi(180, 220);
+      this.phase = Math.random() * TAU;
+    }
+    fleeFrom(largeCreatures) {
+      for (const p of largeCreatures) {
+        const dx = p.x - this.x, dy = p.y - this.y, dz = p.z - this.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        const range = p.fearRange || 200;
+        if (dist < range) {
+          const power = (p.fearPower || 0.5) * (1 - dist / range);
+          this.vx -= (dx / dist) * power;
+          this.vy -= (dy / dist) * power;
+          this.vz -= (dz / dist) * power;
+        }
+      }
+    }
+    update(t, flock, largeCreatures) {
+      this.fleeFrom(largeCreatures);
+      let cx=0,cy=0,cz=0,ax=0,ay=0,az=0,sx=0,sy=0,sz=0,n=0;
+      for (const o of flock) {
+        if (o === this) continue;
+        const dx=o.x-this.x,dy=o.y-this.y,dz=o.z-this.z;
+        const d2=dx*dx+dy*dy+dz*dz;
+        if (d2 < 100*100) {
+          cx+=o.x;cy+=o.y;cz+=o.z;
+          ax+=o.vx;ay+=o.vy;az+=o.vz;
+          if (d2 < 25*25) { sx-=dx; sy-=dy; sz-=dz; }
+          n++;
+        }
+      }
+      if (n > 0) {
+        cx/=n;cy/=n;cz/=n;
+        this.vx += (cx-this.x)*0.001;
+        this.vy += (cy-this.y)*0.001;
+        this.vz += (cz-this.z)*0.001;
+        this.vx += (ax/n-this.vx)*0.05;
+        this.vy += (ay/n-this.vy)*0.05;
+        this.vz += (az/n-this.vz)*0.05;
+        this.vx += sx*0.003; this.vy += sy*0.003; this.vz += sz*0.003;
+      }
+      const maxSp = 2.2;
+      const sp = Math.sqrt(this.vx*this.vx+this.vy*this.vy+this.vz*this.vz);
+      if (sp > maxSp) { this.vx=(this.vx/sp)*maxSp; this.vy=(this.vy/sp)*maxSp; this.vz=(this.vz/sp)*maxSp; }
+      if (this.x < 30) this.vx += 0.05;
+      if (this.x > W - 30) this.vx -= 0.05;
+      if (this.y < 50) this.vy += 0.05;
+      if (this.y > H - 130) this.vy -= 0.05;
+      if (this.z < 0) this.vz += 0.05;
+      if (this.z > DEPTH) this.vz -= 0.05;
+      this.x += this.vx; this.y += this.vy; this.z += this.vz;
+    }
+    draw(t) {
+      const p = project(this.x, this.y, this.z);
+      const dir = this.vx >= 0 ? 1 : -1;
+      const tail = Math.sin(t * 0.02 + this.phase) * 0.4;
+      const s = this.size * p.scale;
+      ctx.save();
+      ctx.globalAlpha = p.scale;
+      ctx.translate(p.x, p.y);
+      ctx.scale(dir * p.scale, p.scale);
+      ctx.fillStyle = `hsla(${this.hue}, 70%, 70%, 0.85)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 1.2, s * 0.5, 0, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-s * 1.0, 0);
+      ctx.lineTo(-s * 1.8, -s * 0.5 + tail * s);
+      ctx.lineTo(-s * 1.8,  s * 0.5 + tail * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s * 0.6, -s * 0.1, s * 0.15, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  const school = [];
+  for (let i = 0; i < 55; i++) school.push(new SchoolFish());
+
+  // ========= クラゲ =========
+  class Jelly {
+    constructor() {
+      this.x = rand(0, W);
+      this.y = rand(100, H - 200);
+      this.z = rand(0, DEPTH);
+      this.vx = rand(-0.2, 0.2);
+      this.vy = rand(-0.3, -0.1);
+      this.vz = rand(-0.1, 0.1);
+      this.size = rand(25, 45);
+      this.hue = randi(270, 330);
+      this.phase = Math.random() * TAU;
+      this.pulseSpeed = rand(0.002, 0.004);
+      this.fearRange = 80;
+      this.fearPower = 0.1;
+    }
+    update(t) {
+      this.x += this.vx + Math.sin(t * 0.0005 + this.phase) * 0.2;
+      this.y += this.vy + Math.sin(t * 0.001 + this.phase) * 0.3;
+      this.z += this.vz;
+      if (this.y < -80) { this.y = H + 80; this.x = rand(0, W); }
+      if (this.x < -50) this.x = W + 50;
+      if (this.x > W + 50) this.x = -50;
+      if (this.z < 0) this.vz = Math.abs(this.vz);
+      if (this.z > DEPTH) this.vz = -Math.abs(this.vz);
+    }
+    draw(t) {
+      const p = project(this.x, this.y, this.z);
+      const pulse = 0.85 + Math.sin(t * this.pulseSpeed + this.phase) * 0.15;
+      const s = this.size * p.scale;
+      ctx.save();
+      ctx.globalAlpha = p.scale * 0.8;
+      ctx.translate(p.x, p.y);
+      ctx.strokeStyle = `hsla(${this.hue}, 70%, 75%, 0.4)`;
+      ctx.lineWidth = 1.5 * p.scale;
+      for (let i = -3; i <= 3; i++) {
+        ctx.beginPath();
+        const sx = i * s * 0.15;
+        ctx.moveTo(sx, s * 0.3);
+        for (let j = 1; j <= 6; j++) {
+          const yy = s * 0.3 + j * s * 0.25;
+          const xx = sx + Math.sin(t * 0.002 + j * 0.5 + i) * 5 * p.scale;
+          ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+      }
+      const grad = ctx.createRadialGradient(0, -s * 0.1, 0, 0, 0, s);
+      grad.addColorStop(0, `hsla(${this.hue}, 80%, 85%, 0.7)`);
+      grad.addColorStop(0.6, `hsla(${this.hue}, 70%, 65%, 0.4)`);
+      grad.addColorStop(1, `hsla(${this.hue}, 60%, 50%, 0.1)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * pulse, s * 0.7 * pulse, 0, Math.PI, TAU);
+      ctx.quadraticCurveTo(s * pulse * 0.5, s * 0.3, 0, s * 0.2);
+      ctx.quadraticCurveTo(-s * pulse * 0.5, s * 0.3, -s * pulse, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(-s * 0.2, -s * 0.2, s * 0.25, s * 0.08, -0.3, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  const jellies = [];
+  for (let i = 0; i < 5; i++) jellies.push(new Jelly());
+
+  // ========= プランクトン =========
+  const plankton = [];
+  for (let i = 0; i < 100; i++) {
+    plankton.push({
+      x: Math.random() * W, y: Math.random() * H, z: Math.random() * DEPTH,
+      r: rand(0.5, 1.8),
+      vx: rand(-0.1, 0.1), vy: rand(-0.1, 0.1), vz: rand(-0.05, 0.05),
+      a: rand(0.2, 0.6)
+    });
+  }
+  function drawPlankton(t) {
+    for (const p of plankton) {
+      p.x += p.vx + Math.sin(t * 0.0005 + p.y * 0.01) * 0.1;
+      p.y += p.vy; p.z += p.vz;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      if (p.z < 0) p.z = DEPTH; if (p.z > DEPTH) p.z = 0;
+      const proj = project(p.x, p.y, p.z);
+      ctx.fillStyle = `rgba(200,230,255,${p.a * proj.scale})`;
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, p.r * proj.scale, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  // ========= 大型生物ベース =========
+  class LargeCreature {
+    constructor() {
+      this.x = 0; this.y = 0; this.z = 0;
+      this.vx = 0; this.vy = 0; this.vz = 0;
+      this.size = 100;
+      this.fearRange = 300;
+      this.fearPower = 0.6;
+      this.phase = Math.random() * TAU;
+      this.spawn();
+    }
+    spawn() {
+      const side = Math.floor(Math.random() * 4);
+      if (side === 0) { this.x = -200; this.y = rand(100, H-200); this.z = rand(100, DEPTH-100); }
+      else if (side === 1) { this.x = W+200; this.y = rand(100, H-200); this.z = rand(100, DEPTH-100); }
+      else if (side === 2) { this.x = rand(100, W-100); this.y = -200; this.z = rand(100, DEPTH-100); }
+      else { this.x = rand(100, W-100); this.y = H+200; this.z = rand(100, DEPTH-100); }
+      this.targetX = rand(W*0.2, W*0.8);
+      this.targetY = rand(H*0.2, H*0.7);
+      this.targetZ = rand(100, DEPTH-100);
+      this.life = 0;
+      this.maxLife = rand(1200, 2000);
+    }
+    steerToTarget() {
+      const dx = this.targetX - this.x;
+      const dy = this.targetY - this.y;
+      const dz = this.targetZ - this.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (dist < 100) {
+        this.targetX = rand(W*0.1, W*0.9);
+        this.targetY = rand(H*0.15, H*0.75);
+        this.targetZ = rand(50, DEPTH-50);
+      }
+      return { dx: dx/dist, dy: dy/dist, dz: dz/dist };
+    }
+  }
+
+  // ========= クジラ =========
+  class Whale extends LargeCreature {
+    constructor() {
+      super();
+      this.size = 180;
+      this.speed = 0.8;
+      this.fearRange = 400;
+      this.fearPower = 0.8;
+      this.tailPhase = Math.random() * TAU;
+      this.flipperPhase = Math.random() * TAU;
+      this.blowTimer = rand(300, 600);
+      this.singTimer = rand(200, 500);
+      this.bubbles = [];
+      this.songRings = [];
+    }
+    update(t) {
+      this.life++;
+      if (this.life > this.maxLife) this.spawn();
+      const dir = this.steerToTarget();
+      this.vx += dir.dx * 0.02;
+      this.vy += dir.dy * 0.015;
+      this.vz += dir.dz * 0.01;
+      this.vy += Math.sin(t * 0.0003 + this.phase) * 0.01;
+      const sp = Math.sqrt(this.vx*this.vx + this.vy*this.vy + this.vz*this.vz);
+      if (sp > this.speed) {
+        this.vx = (this.vx/sp) * this.speed;
+        this.vy = (this.vy/sp) * this.speed;
+        this.vz = (this.vz/sp) * this.speed;
+      }
+      this.vx *= 0.99; this.vy *= 0.99; this.vz *= 0.99;
+      this.x += this.vx; this.y += this.vy; this.z += this.vz;
+
+      // 噴気
+      this.blowTimer--;
+      if (this.blowTimer <= 0) {
+        this.blowTimer = rand(400, 700);
+        for (let i = 0; i < 20; i++) {
+          this.bubbles.push({
+            x: this.x + this.vx * 50,
+            y: this.y - this.size * 0.3,
+            z: this.z,
+            vx: rand(-0.5, 0.5) + this.vx,
+            vy: rand(-2.5, -1.5),
+            vz: rand(-0.3, 0.3),
+            life: rand(60, 120),
+            r: rand(2, 5)
+          });
+        }
+      }
+      for (let i = this.bubbles.length - 1; i >= 0; i--) {
+        const b = this.bubbles[i];
+        b.x += b.vx; b.y += b.vy; b.z += b.vz;
+        b.vy -= 0.02;
+        b.life--;
+        if (b.life <= 0) this.bubbles.splice(i, 1);
+      }
+
+      // 歌（波紋）
+      this.singTimer--;
+      if (this.singTimer <= 0) {
+        this.singTimer = rand(300, 600);
+        this.songRings.push({ x: this.x, y: this.y, z: this.z, r: 0, life: 120 });
+      }
+      for (let i = this.songRings.length - 1; i >= 0; i--) {
+        const r = this.songRings[i];
+        r.r += 2;
+        r.life--;
+        if (r.life <= 0) this.songRings.splice(i, 1);
+      }
+    }
+    draw(t) {
+      // 歌の波紋
+      for (const r of this.songRings) {
+        const p = project(r.x, r.y, r.z);
+        const alpha = (r.life / 120) * 0.3 * p.scale;
+        ctx.save();
+        ctx.strokeStyle = `rgba(180, 220, 255, ${alpha})`;
+        ctx.lineWidth = 2 * p.scale;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r.r * p.scale, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // 噴気の泡
+      for (const b of this.bubbles) {
+        const p = project(b.x, b.y, b.z);
+        const alpha = (b.life / 120) * p.scale;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(220, 240, 255, 0.7)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, b.r * p.scale, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const p = project(this.x, this.y, this.z);
+      const s = this.size * p.scale;
+      const dir = this.vx >= 0 ? 1 : -1;
+      const tailSwing = Math.sin(t * 0.003 + this.tailPhase) * 0.4;
+      const flipperSwing = Math.sin(t * 0.004 + this.flipperPhase) * 0.3;
+      const bodyTilt = Math.atan2(this.vy, Math.abs(this.vx)) * 0.3;
+
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.scale * 1.2);
+      ctx.translate(p.x, p.y);
+      ctx.scale(dir * p.scale, p.scale);
+      ctx.rotate(bodyTilt);
+
+      // 影
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, s * 0.35, s * 0.7, s * 0.08, 0, 0, TAU);
+      ctx.fill();
+
+      // 尾びれ（大きな横長）
+      ctx.save();
+      ctx.translate(-s * 0.9, 0);
+      ctx.rotate(tailSwing * 0.5);
+      const tailGrad = ctx.createLinearGradient(0, -s*0.3, 0, s*0.3);
+      tailGrad.addColorStop(0, '#1a3a5a');
+      tailGrad.addColorStop(0.5, '#2a5a8a');
+      tailGrad.addColorStop(1, '#0a2a4a');
+      ctx.fillStyle = tailGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-s*0.3, -s*0.2, -s*0.5, -s*0.35);
+      ctx.quadraticCurveTo(-s*0.2, -s*0.1, 0, 0);
+      ctx.quadraticCurveTo(-s*0.2, s*0.1, -s*0.5, s*0.35);
+      ctx.quadraticCurveTo(-s*0.3, s*0.2, 0, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // 胸びれ（大きな翼のような）
+      ctx.save();
+      ctx.translate(-s * 0.1, s * 0.15);
+      ctx.rotate(flipperSwing + 0.3);
+      ctx.fillStyle = '#1a3a5a';
+      ctx.beginPath();
+      ctx.ellipse(0, s*0.2, s*0.15, s*0.35, 0.3, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // 本体
+      const bodyGrad = ctx.createLinearGradient(0, -s * 0.3, 0, s * 0.3);
+      bodyGrad.addColorStop(0, '#2a5a8a');
+      bodyGrad.addColorStop(0.4, '#3a7aaa');
+      bodyGrad.addColorStop(0.7, '#8ab0cc');
+      bodyGrad.addColorStop(1, '#d0e0ee');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.9, 0);
+      ctx.quadraticCurveTo(s * 0.9, -s * 0.25, s * 0.5, -s * 0.3);
+      ctx.quadraticCurveTo(0, -s * 0.35, -s * 0.6, -s * 0.2);
+      ctx.quadraticCurveTo(-s * 0.9, -s * 0.1, -s * 0.95, 0);
+      ctx.quadraticCurveTo(-s * 0.9, s * 0.1, -s * 0.6, s * 0.2);
+      ctx.quadraticCurveTo(0, s * 0.35, s * 0.5, s * 0.28);
+      ctx.quadraticCurveTo(s * 0.9, s * 0.2, s * 0.9, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // 腹側の明るいライン
+      ctx.strokeStyle = 'rgba(230, 240, 255, 0.4)';
+      ctx.lineWidth = s * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.7, s * 0.15);
+      ctx.quadraticCurveTo(0, s * 0.25, -s * 0.7, s * 0.1);
+      ctx.stroke();
+
+      // 背びれ（小さい）
+      ctx.fillStyle = '#1a3a5a';
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.3, -s * 0.25);
+      ctx.lineTo(-s * 0.2, -s * 0.45);
+      ctx.lineTo(-s * 0.1, -s * 0.25);
+      ctx.closePath();
+      ctx.fill();
+
+      // 目
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s * 0.55, -s * 0.05, s * 0.05, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(s * 0.56, -s * 0.05, s * 0.025, 0, TAU);
+      ctx.fill();
+
+      // 光沢
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(s * 0.2, -s * 0.2, s * 0.4, s * 0.06, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // ========= サメ =========
+  class Shark extends LargeCreature {
+    constructor() {
+      super();
+      this.size = 130;
+      this.speed = 1.5;
+      this.fearRange = 350;
+      this.fearPower = 0.9;
+      this.tailPhase = Math.random() * TAU;
+      this.huntTarget = null;
+      this.huntCooldown = 0;
+    }
+    update(t, fishes, school) {
+      this.life++;
+      if (this.life > this.maxLife) this.spawn();
+      
+      // 獲物を探す
+      if (this.huntCooldown > 0) this.huntCooldown--;
+      if (!this.huntTarget || this.huntTarget.eaten) {
+        this.huntTarget = null;
+        if (this.huntCooldown <= 0) {
+          let closest = null, minDist = Infinity;
+          const candidates = [...fishes.filter(f => !f.eaten && !f.isPredator), ...school];
+          for (const f of candidates) {
+            const dx = f.x - this.x, dy = f.y - this.y, dz = f.z - this.z;
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            if (dist < minDist && dist < 400) { minDist = dist; closest = f; }
+          }
+          if (closest) this.huntTarget = closest;
+        }
+      }
+      
+      if (this.huntTarget) {
+        const dx = this.huntTarget.x - this.x;
+        const dy = this.huntTarget.y - this.y;
+        const dz = this.huntTarget.z - this.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < 40) {
+          this.huntTarget.eaten = true;
+          this.huntTarget = null;
+          this.huntCooldown = 120;
+        } else {
+          this.vx += (dx/dist) * 0.05;
+          this.vy += (dy/dist) * 0.05;
+          this.vz += (dz/dist) * 0.05;
+        }
+      } else {
+        const dir = this.steerToTarget();
+        this.vx += dir.dx * 0.03;
+        this.vy += dir.dy * 0.02;
+        this.vz += dir.dz * 0.015;
+      }
+      
+      this.vy += Math.sin(t * 0.0005 + this.phase) * 0.005;
+      const sp = Math.sqrt(this.vx*this.vx + this.vy*this.vy + this.vz*this.vz);
+      const maxSp = this.huntTarget ? 2.2 : this.speed;
+      if (sp > maxSp) {
+        this.vx = (this.vx/sp) * maxSp;
+        this.vy = (this.vy/sp) * maxSp;
+        this.vz = (this.vz/sp) * maxSp;
+      }
+      this.vx *= 0.99; this.vy *= 0.99; this.vz *= 0.99;
+      this.x += this.vx; this.y += this.vy; this.z += this.vz;
+    }
+    draw(t) {
+      const p = project(this.x, this.y, this.z);
+      const s = this.size * p.scale;
+      const dir = this.vx >= 0 ? 1 : -1;
+      const tailSwing = Math.sin(t * 0.008 + this.tailPhase) * 0.5;
+      const bodyTilt = Math.atan2(this.vy, Math.abs(this.vx)) * 0.4;
+
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.scale * 1.2);
+      ctx.translate(p.x, p.y);
+      ctx.scale(dir * p.scale, p.scale);
+      ctx.rotate(bodyTilt);
+
+      // 影
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(0, s * 0.3, s * 0.6, s * 0.06, 0, 0, TAU);
+      ctx.fill();
+
+      // 尾びれ（サメ特有の非対称）
+      ctx.save();
+      ctx.translate(-s * 0.7, 0);
+      ctx.rotate(tailSwing * 0.4);
+      const tailGrad = ctx.createLinearGradient(0, -s*0.3, 0, s*0.2);
+      tailGrad.addColorStop(0, '#3a4a5a');
+      tailGrad.addColorStop(1, '#1a2a3a');
+      ctx.fillStyle = tailGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-s * 0.3, -s * 0.4);
+      ctx.lineTo(-s * 0.15, -s * 0.1);
+      ctx.lineTo(-s * 0.2, s * 0.2);
+      ctx.lineTo(0, s * 0.05);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // 背びれ（鋭い三角形）
+      ctx.fillStyle = '#2a3a4a';
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.1, -s * 0.2);
+      ctx.lineTo(0, -s * 0.55);
+      ctx.lineTo(s * 0.15, -s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+
+      // 胸びれ
+      ctx.save();
+      ctx.translate(s * 0.1, s * 0.1);
+      ctx.rotate(0.4);
+      ctx.fillStyle = '#3a4a5a';
+      ctx.beginPath();
+      ctx.ellipse(0, s*0.15, s*0.08, s*0.25, 0.3, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      // 本体（streamlined）
+      const bodyGrad = ctx.createLinearGradient(0, -s * 0.25, 0, s * 0.25);
+      bodyGrad.addColorStop(0, '#4a5a6a');
+      bodyGrad.addColorStop(0.5, '#5a6a7a');
+      bodyGrad.addColorStop(0.8, '#a0aab5');
+      bodyGrad.addColorStop(1, '#d5dde5');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.85, 0);
+      ctx.quadraticCurveTo(s * 0.85, -s * 0.15, s * 0.5, -s * 0.22);
+      ctx.quadraticCurveTo(0, -s * 0.25, -s * 0.5, -s * 0.15);
+      ctx.quadraticCurveTo(-s * 0.75, -s * 0.05, -s * 0.8, 0);
+      ctx.quadraticCurveTo(-s * 0.75, s * 0.08, -s * 0.5, s * 0.15);
+      ctx.quadraticCurveTo(0, s * 0.22, s * 0.5, s * 0.18);
+      ctx.quadraticCurveTo(s * 0.85, s * 0.12, s * 0.85, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // エラ
+      ctx.strokeStyle = 'rgba(20, 30, 40, 0.6)';
+      ctx.lineWidth = s * 0.015;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(s * 0.35 + i * s * 0.04, -s * 0.08);
+        ctx.lineTo(s * 0.35 + i * s * 0.04, s * 0.08);
+        ctx.stroke();
+      }
+
+      // 口
+      ctx.strokeStyle = 'rgba(20, 30, 40, 0.8)';
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.85, s * 0.02);
+      ctx.quadraticCurveTo(s * 0.7, s * 0.08, s * 0.55, s * 0.05);
+      ctx.stroke();
+
+      // 目（鋭い）
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(s * 0.6, -s * 0.08, s * 0.035, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.beginPath();
+      ctx.arc(s * 0.61, -s * 0.09, s * 0.012, 0, TAU);
+      ctx.fill();
+
+      // 光沢
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(s * 0.2, -s * 0.15, s * 0.35, s * 0.04, 0, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // ========= マンタ =========
+  class Manta extends LargeCreature {
+    constructor() {
+      super();
+      this.size = 150;
+      this.speed = 1.0;
+      this.fearRange = 280;
+      this.fearPower = 0.5;
+      this.wingPhase = Math.random() * TAU;
+      this.tailPhase = Math.random() * TAU;
+    }
+    update(t) {
+      this.life++;
+      if (this.life > this.maxLife) this.spawn();
+      const dir = this.steerToTarget();
+      this.vx += dir.dx * 0.02;
+      this.vy += dir.dy * 0.015;
+      this.vz += dir.dz * 0.01;
+      this.vy += Math.sin(t * 0.0004 + this.phase) * 0.008;
+      const sp = Math.sqrt(this.vx*this.vx + this.vy*this.vy + this.vz*this.vz);
+      if (sp > this.speed) {
+        this.vx = (this.vx/sp) * this.speed;
+        this.vy = (this.vy/sp) * this.speed;
+        this.vz = (this.vz/sp) * this.speed;
+      }
+      this.vx *= 0.99; this.vy *= 0.99; this.vz *= 0.99;
+      this.x += this.vx; this.y += this.vy; this.z += this.vz;
+    }
+    draw(t) {
+      const p = project(this.x, this.y, this.z);
+      const s = this.size * p.scale;
+      const dir = this.vx >= 0 ? 1 : -1;
+      const wingFlap = Math.sin(t * 0.004 + this.wingPhase) * 0.3;
+      const tailSwing = Math.sin(t * 0.005 + this.tailPhase) * 0.4;
+      const bodyTilt = Math.atan2(this.vy, Math.abs(this.vx)) * 0.3;
+
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.scale * 1.2);
+      ctx.translate(p.x, p.y);
+      ctx.scale(dir * p.scale, p.scale);
+      ctx.rotate(bodyTilt);
+
+      // 影
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, s * 0.4, s * 0.7, s * 0.08, 0, 0, TAU);
+      ctx.fill();
+
+      // 尾（細長い）
+      ctx.save();
+      ctx.translate(-s * 0.4, 0);
+      ctx.rotate(tailSwing * 0.3);
+      ctx.strokeStyle = '#2a2a3a';
+      ctx.lineWidth = s * 0.03;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-s * 0.3, tailSwing * s * 0.2, -s * 0.7, tailSwing * s * 0.4);
+      ctx.stroke();
+      ctx.restore();
+
+      // 翼（上下の羽ばたき）
+      const wingGrad = ctx.createLinearGradient(0, -s * 0.6, 0, s * 0.6);
+      wingGrad.addColorStop(0, '#1a1a2a');
+      wingGrad.addColorStop(0.5, '#3a3a4a');
+      wingGrad.addColorStop(1, '#5a5a6a');
+      ctx.fillStyle = wingGrad;
+      
+      // 上の翼
+      ctx.save();
+      ctx.translate(0, 0);
+      ctx.rotate(wingFlap * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(s * 0.3, 0);
+      ctx.quadraticCurveTo(s * 0.1, -s * 0.5, -s * 0.3, -s * 0.7);
+      ctx.quadraticCurveTo(-s * 0.4, -s * 0.5, -s * 0.3, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      
+      // 下の翼
+      ctx.save();
+      ctx.translate(0, 0);
+      ctx.rotate(-wingFlap * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(s * 0.3, 0);
+      ctx.quadraticCurveTo(s * 0.1, s * 0.5, -s * 0.3, s * 0.7);
+      ctx.quadraticCurveTo(-s * 0.4, s * 0.5, -s * 0.3, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // 本体（中央の菱形）
+      const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.4);
+      bodyGrad.addColorStop(0, '#4a4a5a');
+      bodyGrad.addColorStop(0.7, '#2a2a3a');
+      bodyGrad.addColorStop(1, '#1a1a2a');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.35, s * 0.25, 0, 0, TAU);
+      ctx.fill();
+
+      // 背中の模様
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.15, s * 0.1, 0, 0, TAU);
+      ctx.fill();
+
+      // 頭側の突起（cephalic fins）
+      ctx.fillStyle = '#2a2a3a';
+      ctx.beginPath();
+      ctx.moveTo(s * 0.3, -s * 0.05);
+      ctx.lineTo(s * 0.45, -s * 0.1);
+      ctx.lineTo(s * 0.35, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(s * 0.3, s * 0.05);
+      ctx.lineTo(s * 0.45, s * 0.1);
+      ctx.lineTo(s * 0.35, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // 目
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(s * 0.2, -s * 0.12, s * 0.025, 0, TAU);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(s * 0.2, s * 0.12, s * 0.025, 0, TAU);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // ========= 大型生物の生成 =========
+  const whales = [];
+  const sharks = [];
+  const mantas = [];
+  for (let i = 0; i < 2; i++) whales.push(new Whale());
+  for (let i = 0; i < 2; i++) sharks.push(new Shark());
+  for (let i = 0; i < 2; i++) mantas.push(new Manta());
+
+  const largeCreatures = [...whales, ...sharks, ...mantas];
+
+  // ========= ビネット =========
+  function drawVignette() {
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,10,0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ========= メインループ =========
+  function loop(t) {
+    drawBackground(t);
+    drawRays(t);
+    drawSand(t);
+
+    // 更新
+    for (const f of school) f.update(t, school, largeCreatures);
+    for (const f of fishes) f.update(t, fishes, predators, largeCreatures);
+    for (const j of jellies) j.update(t);
+    for (const b of bubbles) b.update(t);
+    for (const w of whales) w.update(t);
+    for (const s of sharks) s.update(t, fishes, school);
+    for (const m of mantas) m.update(t);
+
+    // 食べられた魚を補充
+    for (let i = fishes.length - 1; i >= 0; i--) {
+      if (fishes[i].eaten) {
+        const wasPredator = fishes[i].isPredator;
+        fishes.splice(i, 1);
+        fishes.push(new Fish(wasPredator));
+        if (wasPredator) {
+          const idx = predators.indexOf(fishes.find(f => f === fishes[fishes.length-1]));
+          if (idx >= 0) predators[idx] = fishes[fishes.length-1];
+        }
+      }
+    }
+    for (let i = school.length - 1; i >= 0; i--) {
+      if (school[i].eaten) {
+        school.splice(i, 1);
+        school.push(new SchoolFish());
+      }
+    }
+
+    // Zソート
+    const allEntities = [];
+    for (const s of seaweeds) allEntities.push({ type: 'seaweed', obj: s, z: s.z });
+    for (const j of jellies) allEntities.push({ type: 'jelly', obj: j, z: j.z });
+    for (const f of school) allEntities.push({ type: 'school', obj: f, z: f.z });
+    for (const f of fishes) if (!f.eaten) allEntities.push({ type: 'fish', obj: f, z: f.z });
+    for (const w of whales) allEntities.push({ type: 'whale', obj: w, z: w.z });
+    for (const s of sharks) allEntities.push({ type: 'shark', obj: s, z: s.z });
+    for (const m of mantas) allEntities.push({ type: 'manta', obj: m, z: m.z });
+    for (const b of bubbles) allEntities.push({ type: 'bubble', obj: b, z: b.z });
+    allEntities.sort((a, b) => b.z - a.z);
+
+    drawPlankton(t);
+    for (const entity of allEntities) {
+      switch (entity.type) {
+        case 'seaweed': entity.obj.draw(t); break;
+        case 'jelly': entity.obj.draw(t); break;
+        case 'school': entity.obj.draw(t); break;
+        case 'fish': entity.obj.draw(t); break;
+        case 'whale': entity.obj.draw(t); break;
+        case 'shark': entity.obj.draw(t); break;
+        case 'manta': entity.obj.draw(t); break;
+        case 'bubble': entity.obj.draw(t); break;
+      }
+    }
+
+    drawVignette();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  window.addEventListener('resize', () => {
+    seaweeds.length = 0;
+    for (let i = 0; i < 22; i++) seaweeds.push(new Seaweed());
+  });
+})();
+</script>
+</body>
+</html>
